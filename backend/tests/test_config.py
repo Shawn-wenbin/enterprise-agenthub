@@ -57,3 +57,20 @@ def test_cached_settings_can_be_reloaded(monkeypatch: pytest.MonkeyPatch) -> Non
     assert get_settings() is first
     get_settings.cache_clear()
     assert get_settings().env == "production"
+
+
+def test_missing_required_urls_fail_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL")
+    monkeypatch.delenv("REDIS_URL")
+    with pytest.raises(ValidationError) as caught:
+        get_settings()
+    assert {e["loc"][0] for e in caught.value.errors()} == {"DATABASE_URL", "REDIS_URL"}
+
+
+def test_invalid_url_does_not_expose_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "mysql://user:private-password@localhost/db")
+    with pytest.raises(ValidationError) as caught:
+        get_settings()
+    assert "private-password" not in str(caught.value)

@@ -9,9 +9,13 @@ description = "Enterprise AgentHub engineering foundation"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20,<1.21",
+    "asyncpg>=0.30,<1",
     "fastapi>=0.143.0,<0.144.0",
     "pydantic>=2.14.0,<3.0.0",
     "pydantic-settings>=2.15.0,<3.0.0",
+    "redis>=6,<9",
+    "sqlalchemy[asyncio]>=2.0.54,<2.1",
     "uvicorn>=0.54.0,<0.55.0",
 ]
 
@@ -20,6 +24,7 @@ dev = [
     "httpx2>=2.13.1,<3.0.0",
     "mypy>=2.4.0,<3.0.0",
     "pytest>=9.1.1,<10.0.0",
+    "pytest-asyncio>=1,<2",
     "ruff>=0.16.10,<0.17.0",
 ]
 
@@ -42,3 +47,5 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 addopts = "-ra"
+asyncio_mode = "auto"
+markers = ["integration: requires explicitly configured isolated PostgreSQL/Redis"]

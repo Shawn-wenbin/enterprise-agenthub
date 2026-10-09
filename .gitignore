@@ -31,8 +31,8 @@ node_modules/
 *.tsbuildinfo
 pnpm-debug.log*
 
-# Documentation
-docs/
+# Local artifact bytes (metadata lives in PostgreSQL)
+.data/
 
 # Local operating-system files and logs
 .DS_Store

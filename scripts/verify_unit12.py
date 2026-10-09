@@ -1,0 +1,192 @@
+"""Create a fresh isolated database, run migrations/tests and real API restart.
+
+No DROP/TRUNCATE/volume deletion. Test databases and diagnostic evidence are
+retained under their generated name for explicitly authorized later inspection.
+Run: uv run python scripts/verify_unit12.py
+"""
+
+import asyncio
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
+from uuid import uuid4
+
+import asyncpg
+from sqlalchemy.engine import make_url
+
+from agenthub.artifacts.local import LocalFileArtifactStore
+from agenthub.artifacts.service import ArtifactService, InternalArtifactScope
+from agenthub.core.config import Settings
+from agenthub.db.database import Database
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+async def create_database(settings: Settings, name: str) -> str:
+    url = make_url(settings.database_url.get_secret_value())
+    connection = await asyncpg.connect(
+        url.set(drivername="postgresql").render_as_string(hide_password=False),
+        timeout=5,
+    )
+    try:
+        # Generated name consists only of a fixed prefix plus uuid hex.
+        await connection.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await connection.close()
+    return url.set(database=name).render_as_string(hide_password=False)
+
+
+async def sentinel(settings: Settings, artifact_id: str | None = None) -> str:
+    database = Database(settings)
+    store = LocalFileArtifactStore(settings.artifact_root, settings.artifact_max_bytes)
+    await store.open()
+    scope = InternalArtifactScope(tenant_id="verification", project_id="restart")
+    try:
+        service = ArtifactService(database, store, settings.artifact_max_bytes)
+        if artifact_id is None:
+            metadata = await service.save(scope, b"persist across application restart")
+            return metadata.artifact_id
+        assert (
+            await service.read(scope, artifact_id)
+            == b"persist across application restart"
+        )
+        return artifact_id
+    finally:
+        await store.close()
+        await database.close()
+
+
+def verify_server(environment: dict[str, str], logfile: Path) -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    with logfile.open("w") as output:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "agenthub.main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+            cwd=REPO,
+            env=environment,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise RuntimeError("API exited; inspect retained verification log")
+                try:
+                    with urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=1
+                    ) as response:
+                        assert json.load(response) == {"status": "ok"}
+                        assert response.headers["X-Request-ID"].startswith("req_")
+                    break
+                except URLError:
+                    time.sleep(0.1)
+            else:
+                raise TimeoutError("API startup timed out")
+            with urlopen(
+                f"http://127.0.0.1:{port}/health/ready", timeout=5
+            ) as response:
+                assert json.load(response) == {
+                    "status": "ready",
+                    "dependencies": {"postgresql": "ok", "redis": "ok"},
+                }
+            print("Real Uvicorn liveness/readiness: passed")
+        finally:
+            process.send_signal(signal.SIGINT)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()  # Only the Popen process created by this function.
+                process.wait(timeout=5)
+            if process.returncode != 0:
+                raise RuntimeError("API did not shut down cleanly")
+
+
+def main() -> None:
+    os.chdir(REPO)
+    settings = Settings()  # type: ignore[call-arg]
+    if settings.env not in {"development", "test"}:
+        raise RuntimeError("Verification is restricted to development/test")
+    name = f"agenthub_unit12_test_{uuid4().hex}"
+    directory = REPO / ".data" / "unit12-verification" / name
+    directory.mkdir(parents=True, mode=0o700)
+    url = asyncio.run(create_database(settings, name))
+    print("Created isolated test database:", name, flush=True)
+    environment = {
+        **os.environ,
+        "ENV": "test",
+        "DATABASE_URL": url,
+        "REDIS_URL": settings.redis_url.get_secret_value(),
+        "TEST_DATABASE_URL": url,
+        "TEST_REDIS_URL": settings.redis_url.get_secret_value(),
+        "ARTIFACT_ROOT": str(directory / "artifacts"),
+    }
+    for _ in range(2):
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "alembic",
+                "-c",
+                "backend/alembic.ini",
+                "upgrade",
+                "head",
+            ],
+            cwd=REPO,
+            env=environment,
+            check=True,
+        )
+    subprocess.run(
+        ["uv", "run", "pytest", "backend/tests", "--integration"],
+        cwd=REPO,
+        env=environment,
+        check=True,
+    )
+    isolated = Settings(
+        env="test",
+        database_url=url,
+        redis_url=settings.redis_url,
+        artifact_root=directory / "artifacts",
+        _env_file=None,
+    )
+    artifact_id = asyncio.run(sentinel(isolated))
+    for index in range(2):
+        verify_server(environment, directory / f"api-{index}.log")
+        asyncio.run(sentinel(isolated, artifact_id))
+    (directory / "result.json").write_text(
+        json.dumps(
+            {
+                "database": name,
+                "restart_artifact_id": artifact_id,
+                "migration": "0002_constraint_names",
+                "api_restart": "passed",
+                "note": "Isolated deterministic integration evidence; "
+                "no model or connector",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    print("API restart preserved committed metadata and bytes: passed")
+    print("Retained isolated test database and evidence:", directory.relative_to(REPO))
+
+
+if __name__ == "__main__":
+    main()
