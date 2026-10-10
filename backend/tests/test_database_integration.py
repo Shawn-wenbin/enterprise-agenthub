@@ -1,4 +1,4 @@
-"""Real PostgreSQL transactions, migration replay and lifecycle ownership."""
+"""真实 PostgreSQL 事务、迁移重放与生命周期管理责任。"""
 
 import asyncio
 import os
@@ -38,9 +38,9 @@ async def test_commit_rollback_independent_sessions_and_close(
     async with database.session() as session:
         async with session.begin():
             session.add(committed)
-        assert committed.status == "pending"  # expire_on_commit=False snapshot.
+        assert committed.status == "pending"  # expire_on_commit=False 时的快照。
     with pytest.raises(InvalidRequestError):
-        await session.execute(text("SELECT 1"))  # Permanently closed, not reusable.
+        await session.execute(text("SELECT 1"))  # 会话已永久关闭，不能复用。
     with pytest.raises(RuntimeError):
         async with database.session() as session, session.begin():
             session.add(rolled_back)

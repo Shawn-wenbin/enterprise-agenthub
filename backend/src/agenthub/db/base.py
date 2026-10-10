@@ -1,4 +1,4 @@
-"""Shared metadata; model imports are centralized for migration discovery."""
+"""共享元数据；集中导入模型以便迁移发现。"""
 
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase

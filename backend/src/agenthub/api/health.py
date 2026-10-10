@@ -1,4 +1,4 @@
-"""Process health, independent of external services."""
+"""进程健康检查，不依赖外部服务。"""
 
 import asyncio
 from collections.abc import Awaitable, Callable

@@ -1,6 +1,6 @@
-"""Privileged internal read-only diagnostic CLI; never repairs or deletes.
+"""仅供特权内部调用的只读诊断命令行工具；不执行修复或删除。
 
-Run from the repository root: uv run python -m agenthub.artifacts.diagnose
+从仓库根目录运行：uv run python -m agenthub.artifacts.diagnose
 """
 
 import asyncio
@@ -17,7 +17,7 @@ async def diagnose() -> None:
     database = Database(settings)
     store = LocalFileArtifactStore(settings.artifact_root, settings.artifact_max_bytes)
     try:
-        # Even the storage root is not created by a diagnostic run.
+        # 诊断运行时连存储根目录也不创建。
         await store.open(create_root=False)
         service = ArtifactService(
             database,

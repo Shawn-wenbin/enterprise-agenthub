@@ -1,4 +1,4 @@
-"""HTTP error sanitization, correlation and dependency fault contracts."""
+"""HTTP 错误脱敏、关联标识与依赖故障契约。"""
 
 import asyncio
 import json

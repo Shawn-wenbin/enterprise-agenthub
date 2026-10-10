@@ -1,4 +1,4 @@
-"""Configuration defaults, source precedence and validation boundaries."""
+"""配置默认值、来源优先级与校验边界。"""
 
 from pathlib import Path
 

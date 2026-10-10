@@ -1,4 +1,4 @@
-"""Server-generated correlation IDs and sanitized structured request logs."""
+"""服务端生成的关联标识与脱敏后的结构化请求日志。"""
 
 import json
 import logging
@@ -16,7 +16,7 @@ logger = logging.getLogger("agenthub")
 
 
 def configure_logging() -> None:
-    """Emit JSON lines in real API processes, with idempotent handler setup."""
+    """在真实 API 进程中逐行输出 JSON 日志，并幂等地配置处理器。"""
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))
@@ -61,7 +61,7 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, correlated_send)
         except Exception as exc:
-            # No exception text/stack: these can contain secrets, URLs or raw input.
+            # 不记录异常文本或堆栈，它们可能包含秘密、URL 或原始输入。
             log_event("request_failed", exception_type=type(exc).__name__)
             if started:
                 raise

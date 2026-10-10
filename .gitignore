@@ -1,4 +1,4 @@
-# Local configuration and credentials
+# 本地配置与凭据
 .env
 .env.*
 !.env.example
@@ -10,7 +10,7 @@
 *.p12
 *.pfx
 
-# Python environments, caches and build output
+# Python 环境、缓存与构建产物
 .venv/
 venv/
 __pycache__/
@@ -25,15 +25,15 @@ htmlcov/
 build/
 dist/
 
-# Frontend dependencies, caches and build output
+# 前端依赖、缓存与构建产物
 node_modules/
 .pnpm-store/
 *.tsbuildinfo
 pnpm-debug.log*
 
-# Local artifact bytes (metadata lives in PostgreSQL)
+# 本地产物字节内容（元数据保存在 PostgreSQL 中）
 .data/
 
-# Local operating-system files and logs
+# 本地操作系统文件与日志
 .DS_Store
 *.log

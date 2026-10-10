@@ -1,4 +1,4 @@
-"""Real PostgreSQL + local bytes, with scoped controlled fault injection."""
+"""真实 PostgreSQL 与本地字节存储，以及限定作用范围的受控故障注入。"""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -100,7 +100,7 @@ async def test_file_failure_marks_failed_and_blocks_read(
     stage: str,
 ) -> None:
     def fail(*args: object) -> None:
-        assert database.engine.pool.checkedout() == 0  # No transaction over file IO.
+        assert database.engine.pool.checkedout() == 0  # 文件读写期间不持有事务。
         raise OSError("injected")
 
     monkeypatch.setattr(store, stage, fail)
@@ -121,7 +121,7 @@ async def test_pending_commit_failure_never_writes_file(
     scope: InternalArtifactScope,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Fail the commit boundary itself, not the file or INSERT operation.
+    # 在提交边界本身注入失败，而非在文件或 INSERT 操作中注入失败。
     from sqlalchemy import event
     from sqlalchemy.orm import Session
 
@@ -226,7 +226,7 @@ async def test_ready_missing_or_corrupt_file_is_explicit(
     artifact = await own_record(database, scope)
     path = store.root / artifact.storage_key
     if damage == "missing":
-        path.unlink()  # Only this test's own tempfile, never a shared volume.
+        path.unlink()  # 仅删除本测试自己的临时文件，不操作共享卷。
     else:
         path.write_bytes(b"evil" if damage == "hash" else b"different length")
     with pytest.raises(AppError) as caught:

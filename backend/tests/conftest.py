@@ -1,4 +1,4 @@
-"""Keep settings tests independent of the developer's environment."""
+"""使配置测试独立于开发者的本地环境。"""
 
 import os
 import re

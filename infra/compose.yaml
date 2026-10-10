@@ -24,7 +24,7 @@ services:
     image: redis:7.4.11-bookworm@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
     ports:
       - "127.0.0.1:${REDIS_PORT:-56379}:6379"
-    # Disposable local cache/queue, never the source of business truth.
+    # 可丢弃的本地缓存或队列，不作为业务数据的事实来源。
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

@@ -1,7 +1,7 @@
 """${message}
 
-Revision ID: ${up_revision}
-Revises: ${down_revision | comma,n}
+版本标识：${up_revision}
+上一版本：${down_revision | comma,n}
 """
 from collections.abc import Sequence
 from alembic import op

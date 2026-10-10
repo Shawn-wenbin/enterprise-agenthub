@@ -1,7 +1,7 @@
-"""Align CHECK names with metadata without rewriting the applied first revision.
+"""使 CHECK 约束名称与元数据一致，不重写已经执行的首个迁移版本。
 
-Revision ID: 0002_constraint_names
-Revises: 0001_artifacts
+版本标识：0002_constraint_names
+上一版本：0001_artifacts
 """
 
 from collections.abc import Sequence
@@ -15,7 +15,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Fixed identifiers, metadata-only operations; no table rebuild or data loss.
+    # 使用固定标识符，仅操作元数据；不重建表或丢失数据。
     op.execute(
         "ALTER TABLE artifacts RENAME CONSTRAINT "
         "ck_artifacts_ck_artifacts_status TO ck_artifacts_status"

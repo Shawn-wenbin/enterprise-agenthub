@@ -1,4 +1,4 @@
-"""HTTP adapter preserving validation without echoing sensitive request inputs."""
+"""保留验证能力且不回显敏感请求输入的 HTTP 适配器。"""
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -33,7 +33,7 @@ def install_error_handlers(app: FastAPI) -> None:
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        # Keep field locations/types, omit input, arbitrary messages and ctx.
+        # 保留字段位置与类型，省略输入、任意消息和 ctx。
         return response(
             request,
             AppError(
@@ -58,7 +58,7 @@ def install_error_handlers(app: FastAPI) -> None:
                 exc.status_code,
             ),
         )
-        # Preserve protocol headers, but correlation is always server-controlled.
+        # 保留协议响应头，但关联标识始终由服务端控制。
         if exc.headers:
             result.headers.update(exc.headers)
         return result

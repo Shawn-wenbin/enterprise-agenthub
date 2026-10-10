@@ -1,4 +1,4 @@
-"""Real local filesystem behavior and controlled failure injection."""
+"""真实本地文件系统行为与受控故障注入。"""
 
 import asyncio
 import hashlib

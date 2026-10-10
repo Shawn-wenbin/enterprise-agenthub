@@ -1,4 +1,4 @@
-"""Small error contract shared by internal services and the HTTP boundary."""
+"""内部服务与 HTTP 边界共享的精简错误契约。"""
 
 from typing import Any
 

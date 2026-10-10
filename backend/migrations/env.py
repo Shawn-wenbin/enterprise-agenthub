@@ -1,4 +1,4 @@
-"""Alembic asyncio adapter; no create_all(), URLs or app startup imports."""
+"""Alembic 的 asyncio 适配器；不调用 create_all()、不包含 URL、不导入应用启动模块。"""
 
 import asyncio
 from logging.config import fileConfig

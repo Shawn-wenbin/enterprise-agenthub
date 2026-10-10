@@ -1,1 +1,1 @@
-"""Async database infrastructure."""
+"""异步数据库基础设施。"""

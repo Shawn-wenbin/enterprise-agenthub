@@ -1,4 +1,4 @@
-"""One managed engine per process, independent sessions and explicit transactions."""
+"""每个进程管理一个引擎，使用独立会话与显式事务。"""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -24,15 +24,15 @@ class Database:
             },
             hide_parameters=True,
         )
-        # Loaded values stay available after commit without implicit async IO.
-        # They are snapshots: refresh/requery to observe changes by other sessions.
+        # 提交后仍可访问已加载的值，不触发隐式异步读写。
+        # 这些值只是快照；需刷新或重新查询才能观察其他会话的变更。
         self.sessions = async_sessionmaker(
             self.engine, expire_on_commit=False, close_resets_only=False
         )
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:
-        # Closing rolls back unfinished work. Services own session.begin()/commit.
+        # 关闭会话会回滚未完成的操作。服务层负责 session.begin() 和提交。
         async with self.sessions() as session:
             try:
                 yield session

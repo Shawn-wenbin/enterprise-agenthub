@@ -1,4 +1,4 @@
-"""Only the metadata needed by Unit 1.2; ownership FKs arrive in Unit 1.4."""
+"""仅包含单元 1.2 所需的元数据；归属外键在单元 1.4 中引入。"""
 
 from datetime import UTC, datetime
 

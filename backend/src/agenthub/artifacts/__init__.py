@@ -1,1 +1,1 @@
-"""Internal artifact metadata and controlled byte storage."""
+"""内部产物元数据与受控字节存储。"""

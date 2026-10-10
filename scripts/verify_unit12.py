@@ -1,8 +1,8 @@
-"""Create a fresh isolated database, run migrations/tests and real API restart.
+"""创建新的隔离数据库，执行迁移、测试与真实 API 重启验证。
 
-No DROP/TRUNCATE/volume deletion. Test databases and diagnostic evidence are
-retained under their generated name for explicitly authorized later inspection.
-Run: uv run python scripts/verify_unit12.py
+不执行 DROP、TRUNCATE 或卷删除。测试数据库与诊断证据
+按生成的名称保留，供后续获得明确授权后检查。
+运行：uv run python scripts/verify_unit12.py
 """
 
 import asyncio
@@ -36,7 +36,7 @@ async def create_database(settings: Settings, name: str) -> str:
         timeout=5,
     )
     try:
-        # Generated name consists only of a fixed prefix plus uuid hex.
+        # 生成的名称仅由固定前缀与 UUID 的十六进制值组成。
         await connection.execute(f'CREATE DATABASE "{name}"')
     finally:
         await connection.close()
@@ -113,7 +113,7 @@ def verify_server(environment: dict[str, str], logfile: Path) -> None:
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                process.kill()  # Only the Popen process created by this function.
+                process.kill()  # 仅终止此函数创建的 Popen 进程。
                 process.wait(timeout=5)
             if process.returncode != 0:
                 raise RuntimeError("API did not shut down cleanly")

@@ -1,4 +1,4 @@
-"""Replaceable byte-store contract; no database or authorization dependencies."""
+"""可替换的字节存储契约；不依赖数据库或授权组件。"""
 
 from dataclasses import dataclass
 from typing import Protocol

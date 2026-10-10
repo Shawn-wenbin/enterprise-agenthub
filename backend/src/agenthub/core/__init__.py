@@ -1,1 +1,1 @@
-"""Shared application configuration."""
+"""共享应用配置。"""

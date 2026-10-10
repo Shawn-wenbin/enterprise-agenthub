@@ -1,1 +1,1 @@
-"""Enterprise AgentHub application package."""
+"""Enterprise AgentHub 应用包。"""

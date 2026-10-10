@@ -1,7 +1,7 @@
-"""Minimal artifact metadata; tenant/project FKs deferred to Unit 1.4.
+"""最小产物元数据；租户和项目外键推迟到单元 1.4 实现。
 
-Revision ID: 0001_artifacts
-Revises: None
+版本标识：0001_artifacts
+上一版本：None
 """
 
 from collections.abc import Sequence
@@ -48,7 +48,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drops data only when an operator explicitly invokes downgrade.
+    # 仅在操作人员显式调用 downgrade 时删除数据。
     op.drop_index("ix_artifacts_pending", table_name="artifacts")
     op.drop_index("ix_artifacts_scope", table_name="artifacts")
     op.drop_table("artifacts")

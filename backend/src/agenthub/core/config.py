@@ -1,4 +1,4 @@
-"""Typed settings loaded through a single, cacheable entry point."""
+"""通过统一且可缓存的入口加载具有类型约束的配置。"""
 
 from functools import lru_cache
 from pathlib import Path
@@ -80,4 +80,4 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]  # Required fields come from environment.
+    return Settings()  # type: ignore[call-arg]  # 必填字段来自环境变量。

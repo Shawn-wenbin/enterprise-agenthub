@@ -1,4 +1,4 @@
-"""HTTP health and startup configuration validation."""
+"""HTTP 健康检查与启动配置校验。"""
 
 import pytest
 from fastapi.testclient import TestClient

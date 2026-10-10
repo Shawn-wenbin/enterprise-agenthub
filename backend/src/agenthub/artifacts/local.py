@@ -1,4 +1,4 @@
-"""POSIX local volume: dirfd confinement, no-follow IO and no-clobber publishing."""
+"""POSIX 本地卷：通过 dirfd 限定路径、读写时拒绝符号链接、发布时禁止覆盖。"""
 
 import asyncio
 import hashlib
@@ -18,8 +18,8 @@ CHUNK_BYTES = 1024 * 1024
 
 
 async def offload[T](operation: Callable[[], T]) -> T:
-    # Cancellation cannot stop a running OS thread. Drain it before allowing
-    # lifespan teardown to close the pinned directory descriptor.
+    # 取消无法终止正在运行的操作系统线程。先等待线程结束，
+    # 再允许生命周期清理关闭固定的目录描述符。
     task = asyncio.create_task(asyncio.to_thread(operation))
     try:
         return await asyncio.shield(task)
@@ -44,8 +44,8 @@ class LocalFileArtifactStore:
         await offload(open_root)
 
     def _open_root(self, *, create_root: bool) -> int:
-        # Walk every component using directory descriptors. No resolve() that
-        # could silently accept a symlink; directories are pinned after opening.
+        # 使用目录描述符逐级遍历路径，不调用可能悄然接受符号链接的 resolve()；
+        # 目录在打开后通过描述符固定。
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         fd = os.open(self.root.anchor, flags)
         try:
@@ -101,7 +101,7 @@ class LocalFileArtifactStore:
             output.flush()
             os.fsync(output.fileno())
         os.lseek(fd, 0, os.SEEK_SET)
-        # Verify the actual saved bytes, not just the caller's input.
+        # 校验实际保存的字节内容，而非仅校验调用方的输入。
         saved = self._read_fd(fd)
         result = StoredContent(digest.hexdigest(), size)
         if (
@@ -112,8 +112,8 @@ class LocalFileArtifactStore:
         return result
 
     def _publish(self, temporary: str, key: str, directory: int) -> None:
-        # link() atomically fails with EEXIST. Unlike replace(), it never
-        # overwrites an existing regular file or symlink at the destination.
+        # 目标已存在时，link() 会原子地以 EEXIST 失败。与 replace() 不同，
+        # 它不会覆盖目标位置已有的普通文件或符号链接。
         os.link(
             temporary,
             key,
@@ -157,8 +157,8 @@ class LocalFileArtifactStore:
             info = os.fstat(fd)
             identity = (info.st_dev, info.st_ino)
             saved = self._write(fd, content)
-            # Revalidate the owned source before publication. This controlled
-            # root must not be writable by untrusted host users/processes.
+            # 发布前重新校验本次创建的源文件。此受控根目录
+            # 不得允许不可信的宿主用户或进程写入。
             current = os.stat(temporary, dir_fd=directory, follow_symlinks=False)
             if (current.st_dev, current.st_ino) != identity:
                 raise StorageError("artifact_source_changed")
@@ -207,7 +207,7 @@ class LocalFileArtifactStore:
 
     def _read(self, key: str) -> bytes:
         try:
-            # NONBLOCK prevents a malicious FIFO from hanging before fstat().
+            # NONBLOCK 防止恶意 FIFO 在调用 fstat() 之前导致阻塞。
             fd = os.open(
                 key, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self._fd()
             )
@@ -231,7 +231,7 @@ class LocalFileArtifactStore:
             try:
                 info = os.stat(name, dir_fd=directory, follow_symlinks=False)
             except FileNotFoundError:
-                continue  # Concurrent publication/removal: this is a snapshot.
+                continue  # 存在并发发布或删除；此处仅获取快照。
             kind = "unknown_entry"
             if stat.S_ISLNK(info.st_mode):
                 kind = "unsafe_entry"

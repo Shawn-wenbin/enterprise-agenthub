@@ -1,4 +1,4 @@
-"""Assemble the HTTP application without opening external connections."""
+"""装配 HTTP 应用，不建立外部连接。"""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

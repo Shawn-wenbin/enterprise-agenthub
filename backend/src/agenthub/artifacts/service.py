@@ -1,4 +1,4 @@
-"""Short metadata transactions around controlled file IO; internal callers only."""
+"""围绕受控文件读写使用短元数据事务；仅供内部调用。"""
 
 import asyncio
 import hashlib
@@ -23,10 +23,10 @@ def content_hash(content: bytes) -> str:
 
 
 class InternalArtifactScope(BaseModel):
-    """Constructed by trusted server code, never bound to HTTP/model arguments.
+    """由可信服务端代码构造，不绑定 HTTP 请求或模型参数。
 
-    This is ownership scoping, not authentication. Unit 1.4 supplies Principal,
-    membership/ACL checks and tenant/project foreign keys.
+    此处限定资源归属范围，不提供身份认证。单元 1.4 将补充 Principal、
+    成员关系与 ACL 检查，以及租户和项目外键。
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -91,7 +91,7 @@ class ArtifactService:
                     )
                 )
         except SQLAlchemyError:
-            # Never enter the file stage when pending commit fails/ is unknown.
+            # pending 状态提交失败或结果未知时，不进入文件保存阶段。
             raise AppError(
                 "dependency_unavailable",
                 "Artifact metadata could not be saved",
@@ -103,7 +103,7 @@ class ArtifactService:
         except StorageError as exc:
             if not exc.published:
                 await self._mark_failed(artifact_id, exc.code)
-            # Published objects are retained, never reported as ready or deleted.
+            # 保留已发布的对象，不将其报告为 ready，也不删除。
             raise AppError(
                 exc.code,
                 "Artifact storage failed",
@@ -118,7 +118,7 @@ class ArtifactService:
             return await self._mark_ready(artifact_id, saved)
         except SQLAlchemyError:
             log_event("artifact_ready_commit_failed", artifact_id=artifact_id)
-            # Commit outcomes may be unknown. Reconciliation is read-only here.
+            # 提交结果可能未知。此处仅执行只读对账。
             raise AppError(
                 "artifact_metadata_unconfirmed",
                 "Artifact completion could not be confirmed",
@@ -143,7 +143,7 @@ class ArtifactService:
                 artifact.status = "ready"
                 await session.flush()
                 result = ArtifactMetadata.model_validate(artifact)
-            return result  # Only after commit succeeded.
+            return result  # 仅在提交成功后返回。
 
     async def _mark_failed(self, artifact_id: str, code: str) -> None:
         try:
@@ -177,7 +177,7 @@ class ArtifactService:
                 artifact.content_hash,
                 artifact.size_bytes,
             )
-        # Read transaction/session is closed before any file IO.
+        # 在任何文件读写之前关闭读取事务和会话。
         try:
             content = await self.store.read(key)
         except StorageError as exc:
@@ -190,9 +190,9 @@ class ArtifactService:
         return content
 
     async def diagnose(self) -> list[DiagnosticIssue]:
-        """Trusted operator-only dry run, no HTTP endpoint and no mutations.
+        """仅供可信操作人员执行的只读预演，无 HTTP 端点，不修改数据。
 
-        Results are a concurrent snapshot, not a global recovery decision.
+        结果为并发快照，不代表全局恢复决策。
         """
         async with self.database.session() as session:
             artifacts = list((await session.scalars(select(Artifact))).all())
