@@ -55,6 +55,11 @@ class RequestContextMiddleware:
                     for k, v in message.get("headers", [])
                     if k.lower() != b"x-request-id"
                 ]
+                if scope["path"].startswith("/api/v1/auth/"):
+                    headers = [
+                        (k, v) for k, v in headers if k.lower() != b"cache-control"
+                    ]
+                    headers.append((b"cache-control", b"no-store"))
                 message["headers"] = headers + [(b"x-request-id", request_id.encode())]
             await send(message)
 

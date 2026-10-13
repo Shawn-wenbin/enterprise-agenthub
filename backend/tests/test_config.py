@@ -1,11 +1,23 @@
 """配置默认值、来源优先级与校验边界。"""
 
+import json
+import secrets
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from agenthub.core.config import Settings, get_settings
+
+
+def production_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRUSTED_ORIGINS", json.dumps(["https://hub.example.test"]))
+    monkeypatch.setenv("CSRF_SECRET", secrets.token_hex(32))
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://test:strong-test-password-only@127.0.0.1:1/test",
+    )
+    monkeypatch.setenv("REDIS_URL", "redis://:strong-test-password-only@127.0.0.1:1/0")
 
 
 def test_missing_env_uses_development_default() -> None:
@@ -16,6 +28,8 @@ def test_missing_env_uses_development_default() -> None:
 def test_env_is_read_without_a_prefix(
     monkeypatch: pytest.MonkeyPatch, environment: str
 ) -> None:
+    if environment == "production":
+        production_environment(monkeypatch)
     monkeypatch.setenv("ENV", environment)
     assert get_settings().env == environment
 
@@ -41,6 +55,7 @@ def test_environment_overrides_dotenv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     (tmp_path / ".env").write_text("ENV=development\n", encoding="utf-8")
+    production_environment(monkeypatch)
     monkeypatch.setenv("ENV", "production")
     assert get_settings().env == "production"
 
@@ -53,6 +68,7 @@ def test_settings_can_be_injected_without_loading_dotenv(tmp_path: Path) -> None
 def test_cached_settings_can_be_reloaded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "test")
     first = get_settings()
+    production_environment(monkeypatch)
     monkeypatch.setenv("ENV", "production")
     assert get_settings() is first
     get_settings.cache_clear()

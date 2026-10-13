@@ -1,5 +1,161 @@
 # IMPLEMENTATION_STATUS
 
+最后更新：2026-10-13
+当前 Phase：1
+当前 Unit：1.3 — Session 登录与安全请求
+Unit 状态：**verified**（本 Unit 必要退出条件已通过；生产/浏览器未验证项见下）
+当前模式：macOS 本地确定性测试 + 真实 PostgreSQL/Redis/HTTP；无 Mock/Live 模型或外部连接器。
+
+## 范围与基线
+
+本次仅实现 Unit 1.3，没有 tenant/membership/project/role/ACL/Principal、正式 demo seed、完整 UI、
+SSO/OIDC、Run/Worker/Agent/RAG/MCP。未 commit/push/部署，未删除测试库、Volume 或用户数据。
+开工 Git 工作区干净，基线 6df70fc；读取 AGENTS、规格第 4/13/15 节、Unit 1.3 计划、STATUS 和 ADR 0001。
+实际复查 App Factory、AsyncSession、迁移、Settings、Compose、统一错误/request_id 和 Vite；
+Unit 1.1–1.2 原本 43 个本地测试重新通过，已有 PostgreSQL/Redis 容器 healthy。
+本次完整测试也包含原有 19 个真实数据库/产物回归，没有仅凭历史 STATUS 判定通过。
+规格无整体架构冲突。仅同步 auth/csrf 合同、UserIdentity 阶段边界和新增持久化合同，AGENTS/旧迁移未改。
+
+## 实际实现与关键文件
+
+- auth/models.py、0003_users_sessions.py、db/metadata.py：最小 User/Session 模型及追加迁移。
+  User：UUID id、唯一 login_name、password_hash、is_active、UTC created_at/updated_at。
+  Session：UUID id、users 外键及 user_id 索引、唯一 token_hash、UTC created_at/expires_at/revoked_at。
+  数据库 CHECK 限制规范化账号和 expires_at > created_at；不建立未来业务表。
+- auth/schemas.py：账号 strip/lower、1–128 个 ASCII 字符（字母/数字开头，其余允许 _.@+-），
+  输入禁止额外身份字段；密码 SecretStr 1–256 字符，身份响应只有 id/login_name。
+- auth/security.py：pwdlib/Argon2id、线程并发限制、dummy 校验、256 bit 随机 Session Token/SHA-256，
+  ItsDangerous SHA-256 签名与限时 CSRF；不自行实现密码或签名算法。
+- auth/service.py：短查询、事务提交后返回 Session；密码计算期间无数据库连接；创建前重查并行锁用户，
+  每次认证查 PostgreSQL 有效期/撤销/用户状态；注销只撤销当前 Session，连接/超时错误失败关闭。
+- auth/dependencies.py、api/router.py：可覆盖 get_current_user/get_current_session 依赖；
+  后续业务 Router 挂到受保护 /api/v1 入口，所有非安全方法要求精确 Origin + CSRF。
+- api/auth.py：POST /api/v1/auth/login、POST /api/v1/auth/logout（成功 204）、
+  GET /api/v1/auth/me、GET /api/v1/auth/csrf；成功与失败响应均 no-store。
+- auth/body_limit.py：解析 JSON 前将登录请求体限制为 4096 bytes，包含 chunked 流。
+- auth/rate_limit.py：Redis Lua 原子来源/账号固定窗口；main.py 复用已有 DB/Redis/store 生命周期。
+- core/config.py、.env.example：环境 Cookie/CSRF/Origin/限流配置及生产启动硬校验；
+  注入 Settings 也重新验证，不因 model_copy 绕过生产限制。
+- frontend/vite.config.ts：/api 前缀原样代理，默认 loopback:8000，保留 Cookie/Origin；
+  服务端 AGENTHUB_API_PROXY_TARGET 可支持临时端口，未创建正式登录 UI/重复 DTO。
+- test_auth_security.py、test_auth_integration.py：新增 24 个本地安全测试和 17 个真实集成测试。
+  既有迁移回归断言更新为明确四表和新 revision；没有删除断言或放宽安全检查。
+- scripts/verify_unit13.py：新库迁移、旧 Artifact 保留、完整测试、真实代理/重启及伪造转发头验证。
+  verify_unit12.py 仅同步实际迁移头报告；README 说明本地安全调用和隔离用户 fixture。
+
+## 调用链与安全策略
+
+登录：共享 Redis 限流 → 短查询用户并关闭 Session → 有限线程 Argon2id 验证（无用户也验证 dummy）→
+短事务锁定/重查账号 → 生成并持久化 Session hash/TTL → 提交成功 → HttpOnly Cookie。
+用户不存在、密码错和禁用均为通用 401；事务失败不返回有效登录/认证 Cookie。
+
+身份：Cookie → 格式检查 → SHA-256 → Session 与 User 联合查询 → 检查固定 TTL、revoked_at、is_active →
+不可变 UserIdentity。不存在、伪造、撤销、过期、禁用均 401；依赖故障 503，不信任 body/query/header user_id。
+
+注销：Origin + 当前有效 Session 绑定 CSRF → 短事务条件撤销当前行 → 提交 → 删除同名同属性 Cookie。
+重复/失效注销为 401；数据库撤销失败 503，不清 Cookie、不声称已失效。其他 Session 独立。
+
+Cookie：dev 默认 agenthub_session、HttpOnly、SameSite=lax、Secure=false、Path=/、host-only；
+无 Secure 时只允许 loopback/localhost Origin。prod 默认 __Host-agenthub_session、Secure=true、
+HttpOnly=true、SameSite=lax、Path=/、无 Domain；None 必须 Secure。生产要求显式 HTTPS Origin、
+32-byte 随机 CSRF 密钥和非默认数据库/Redis 凭据；本地无认证 Redis 配置不能用于生产。
+
+CSRF：登录前发放 10 分钟签名随机 nonce，通过 HttpOnly Cookie + JSON body 给同源客户端，
+修改请求必须将相同签名值放入 X-CSRF-Token 并通过签名/时效/Origin/JSON 格式校验。
+登录成功清除预登录 Cookie，再获取绑定 Session.id 的签名凭证；服务端先验证当前 Session，
+旧 Session 的 CSRF 不能在另一会话或撤销/过期后使用。不是任意 Cookie 的裸值比较。
+获取凭证要求精确可信 Origin，或无 Origin 的浏览器 Sec-Fetch-Site=same-origin + X-CSRF-Fetch=1；
+非法/第三方来源拒绝，无宽松 CORS。修改请求缺失 Origin 直接拒绝，不回退信任 Host/Referer/Forwarded。
+所有 API 修改请求复用同一 guard；安全 GET 不改变业务记录，csrf GET 仅发放防伪 Cookie。
+
+CSRF_SECRET 所有 API 进程共用；轮换使旧 CSRF 失效，但保留服务端 Session，可重新获取凭证。
+dev/test 缺省随机临时密钥跨重启/进程不稳定，生产不允许缺省；需要多进程开发时应显式配置。
+预登录凭证没有单独数据库账本，签名有效期间可重放，登录完成会清 Cookie，后续需 Session 绑定凭证。
+
+限流：默认首次尝试起 300 秒固定窗口，连接来源 60 次、规范化账号 10 次；成功与失败都计数。
+同一 Lua 脚本执行 INCR/首次 EXPIRE，拒绝不延长窗口，计数跨进程共享；Redis 故障登录 503。
+来源与账号 Redis key 使用 hash；不记录原始密码/Session/CSRF。只使用 ASGI 连接来源，官方启动命令
+使用 --no-proxy-headers；直接伪造 XFF/Forwarded 不改变来源。Vite 代理后的客户端共用 loopback
+来源额度；当前未实现生产可信代理的细分客户端来源、Redis Cluster 或复杂风控。
+
+Argon2id 参数：m=65536 KiB、t=3、p=4，库默认 16-byte 随机盐和 32-byte hash；
+默认每 API 进程最多 2 个密码计算（约 128 MiB 同时工作内存），不阻塞 API 事件循环。
+最终脚本单次真实 hash 为 36.05 ms（本机单样本，不是性能分位数或用户名时间侧信道证明）。
+密码低熵，使用带盐且耗内存的 Argon2id；Session 随机 256 bit，可用快速 SHA-256 建索引。
+Server-side Session 让有效期/撤销/禁用每次直接检查，不需要提前引入 JWT 撤销账本；
+Cookie 属性不能替代请求防伪，当前 UserIdentity 只证明身份，后续 Principal 才表达授权。
+
+## 实际验证 — verified
+
+- uv sync：成功，uv.lock 新锁定 pwdlib 0.3.1、argon2-cffi 25.1.0、argon2-cffi-bindings 26.1.0、
+  ItsDangerous 2.2.0、cffi 2.1.1、pycparser 3.11；既有框架/前端版本未升级。
+- uv run ruff check .：All checks passed；uv run ruff format --check .：50 files already formatted。
+- uv run mypy backend/src：Success，29 个源码文件，strict 未放宽。
+- uv run pytest backend/tests：67 passed、36 deselected；真实依赖用例未混入本地通过数。
+- uv run python scripts/verify_unit13.py：最终隔离库
+  agenthub_unit13_test_5216ef9666b5419eba155eb813cf78e2，全部 **103 passed**（67 本地 + 36 集成）。
+  真实 PostgreSQL 17.11 / Redis 7.4.11；Redis 使用逻辑库 15 与随机 test namespace，无 flush。
+- 同脚本：新库从零到 0002 保存 Artifact 后升级 0003；重复 upgrade head 成功，
+  alembic check 为 No new upgrade operations detected；原 Artifact 元数据及字节均保留。
+  明确表集合 artifacts/users/sessions/alembic_version，User 唯一/规范化、Session hash 唯一和外键通过。
+- 同脚本真实 Uvicorn/Vite HTTP：代理保留 /api，登录保存 Cookie，/me 成功；缺失 CSRF 拒绝；
+  Uvicorn 进程重启后原 Session 仍有效，logout 后旧 Token 401；health/readiness 全部 200。
+  --no-proxy-headers 下伪造 Forwarded/XFF 不绕过来源限流，超过 3 次测试额度为 429。
+- 真实集成覆盖：错误密码/不存在/禁用通用 401、过期/撤销/禁用/伪造 Cookie、独立并发登录、
+  跨 Session CSRF 拒绝、Origin/CSRF 任一失败、预登录防伪、账号规范化限流、窗口恢复、
+  30 并发尝试经两个独立 Redis 客户端严格只放行 5 次、真实不可达 Redis 503。
+  注入 DB 创建/撤销 commit 失败无成功 Cookie/撤销报告；真实不可达 DB 身份请求 503。
+  密码计算期间禁用后不能建 Session；HTTPS ASGI 客户端验证 __Host-/Secure Cookie 及正确删除。
+- 默认开发库实际执行 uv run alembic -c backend/alembic.ini upgrade head（UTF-8 locale），
+  0002 → 0003，重复执行成功；alembic check 无差异。迁移前后 Artifact count 均 0、摘要相同；
+  非空数据保留证据来自隔离库 sentinel，不将空库比较冒充非空验证。
+- pnpm -C frontend typecheck、pnpm -C frontend build：成功，Vite 8.3.4。
+- git diff --check：通过；暂存区为空，AGENTS 与 0001/0002 无改动；.env/infra/.env/.data/
+  虚拟环境/node_modules/dist 的忽略规则核对通过。未改本地 .env 或 Compose 凭据。
+
+最终证据：.data/unit13-verification/agenthub_unit13_test_5216ef9666b5419eba155eb813cf78e2/result.json，
+api-0.log/api-1.log/vite.log；均 Git ignored，不包含原始凭证。
+此前创建的隔离库 e02b29512813497194bfdf131ec01caa（locale 失败，未迁移）和
+8f96673341614283a9a1aa771f8dcd9d（首轮 94 passed）、
+ dd9c1cf3bf7b49ad8920ae2d4ba4457c（补充边界后 102 passed）也保留，不自动删除。
+
+## 首轮失败与处理
+
+- uv cache、Docker socket、仓库非 artifacts 路径和前端构建写入被沙箱拒绝，按权限流程获准后执行；
+  没有绕过沙箱或改用个人全局环境。
+- 配置示例复核发现 Literal[True] 拒绝环境变量字符串 true；改为标准 bool 解析并硬性拒绝 false，
+  新增环境变量回归后最终完整 103 passed，未降低 HttpOnly 要求。
+- 初轮格式/类型检查失败，修正类型收窄、格式和依赖注入测试；最终检查通过。
+- 默认 8000/5173 端口已占用，验证脚本改用空闲端口和受控 Vite target，不终止用户已有进程。
+- ASCII locale 导致 Alembic 读取已有中文 ini 注释失败；脚本显式 LC_ALL=en_US.UTF-8 后重跑成功，
+  不修改已应用迁移、不删除失败库、不将失败记录为通过。
+
+## 限制、unverified 与 blocked
+
+- **unverified**：真实浏览器 Cookie/Fetch Metadata 行为、生产 HTTPS/TLS/反向代理、多宿主多 worker 部署、
+  负载性能及密码校验时间侧信道评估；HTTP 代理和 HTTPS ASGI 属性测试不替代这些验收。
+- **unverified / 后续范围**：Tenant/Project/Membership/Role/Resource ACL/Principal、正式 dev/test seed、
+  完整登录 UI、SSO/OIDC/MFA、密码找回、用户管理、完整 IAM/生产安全运维。
+- 每请求认证采用已提交状态快照；注销/禁用影响后续检查，不取消已经开始的业务请求或撤回外部效果。
+  Session 创建提交响应丢失可能保留不可达 Session；无成功 Cookie，不盲重试，不承诺 exactly-once。
+- 本地 Redis 无认证仅适合 loopback 开发；生产须另配置认证和部署边界，当前 Compose 不是生产方案。
+- 没有滑动续期、会话管理/批量撤销 UI、过期行自动清理或分布式 Session cache。
+- **blocked**：无 Unit 1.3 必要验收阻塞。以上未验证项保持明确，不推广为生产落地或模型质量。
+
+## Unit 1.4 进入条件
+
+Unit 1.1–1.3 verified，Phase 1 总体仍 unverified；本次止于 1.3，不自动进入 1.4。
+下一 Unit 需单独授权，在当前可信 User/Session 上新增 Tenant、Membership、Project、Role、
+Resource ACL 与 Principal；从服务端 membership/project scope 构建授权上下文，tenant_id/role
+不能直接相信客户端字段。使用新增迁移补归属外键前审计已有 Artifact 内部标识，保留现有数据。
+dev/test 幂等 seed 只在受控环境创建两个租户及独立演示账号，密码来自本地配置，无生产默认账户。
+后续 Router 复用受保护 /api/v1、get_current_user、短事务和统一错误，写入前还需重新检查授权。
+
+---
+
+## Unit 1.2 验收历史（2026-10-10，原记录保留）
+
+
 最后更新：2026-10-10  
 当前 Phase：1  
 当前 Unit：1.2 — 数据库、迁移与基础产物存储  

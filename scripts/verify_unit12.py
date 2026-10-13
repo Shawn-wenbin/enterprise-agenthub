@@ -175,7 +175,7 @@ def main() -> None:
             {
                 "database": name,
                 "restart_artifact_id": artifact_id,
-                "migration": "0002_constraint_names",
+                "migration": "0003_users_sessions",
                 "api_restart": "passed",
                 "note": "Isolated deterministic integration evidence; "
                 "no model or connector",

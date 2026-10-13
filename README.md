@@ -1,9 +1,10 @@
 # Enterprise AgentHub
 
-面向研发故障分析与行动的企业 Agent 工作台。当前已实现 **Phase 1 / Unit 1.1–1.2**：
-工程、PostgreSQL/Redis、异步数据库与迁移、受控本地产物、统一错误和 request_id。
+面向研发故障分析与行动的企业 Agent 工作台。当前已实现 **Phase 1 / Unit 1.1–1.3**：
+工程、PostgreSQL/Redis、异步数据库与迁移、受控本地产物、统一错误和 request_id，
+以及 User/Session 登录、撤销、CSRF/Origin 与共享登录限流。
 规格见 [PROJECT_SPEC](docs/PROJECT_SPEC.md)，实际验收见 [IMPLEMENTATION_STATUS](docs/IMPLEMENTATION_STATUS.md)，
-设计依据见 [ADR 0001](docs/adr/0001-unit12-storage-and-database.md)。没有开始 Unit 1.3。
+设计依据见 [ADR 0001](docs/adr/0001-unit12-storage-and-database.md)。本次止于 Unit 1.3，未实现租户/角色授权。
 
 ## 环境与依赖
 
@@ -62,7 +63,7 @@ Redis 当前是无认证、仅 loopback 的开发依赖，不作为业务数据�
 ## API 与前端
 
 ```bash
-uv run uvicorn agenthub.main:app --reload
+uv run uvicorn agenthub.main:app --reload --no-proxy-headers
 curl -i http://127.0.0.1:8000/health
 curl -i http://127.0.0.1:8000/health/ready
 ```
@@ -78,8 +79,75 @@ pnpm -C frontend typecheck
 pnpm -C frontend build
 ```
 
-前端当前仍是独立的最小项目页面，没有产物或登录业务接口；build 输出被 Git 忽略。
-业务 API 的 /api/v1 前缀由后续 Unit 接入，已有根路径 health 保持兼容。
+前端当前仍是最小项目页面，没有正式登录 UI；build 输出被 Git 忽略。
+Vite 在 127.0.0.1:5173 将 `/api` 原样代理到 127.0.0.1:8000，保留 Cookie 和浏览器 Origin。
+非默认 API 端口可在启动 Vite 时配置服务端环境变量 AGENTHUB_API_PROXY_TARGET；该值不进入客户端包。
+使用相对路径 `/api/v1/...`，不启用通配符凭据 CORS。生产需同源 HTTPS 反向代理，不能使用 Vite 代替。
+来源限流使用 ASGI 连接地址；必须使用上述 `--no-proxy-headers`，当前不会按任意 XFF 拆分客户端。
+开发代理后的客户端共用后端看到的 loopback 来源额度；生产代理的可信来源传递需单独设计和验证。
+
+## 登录与安全请求
+
+当前 API：POST `/api/v1/auth/login`、GET `/api/v1/auth/me`、POST `/api/v1/auth/logout`、
+GET `/api/v1/auth/csrf`。身份只有 id/login_name，密码及 Session Token 不进入 JSON 响应。
+账号标识 strip/lower 后限 ASCII 1–128 字符（字母/数字开头，其余允许 `_.@+-`）；数据库唯一和
+CHECK 约束保证一致。密码输入 1–256 字符，登录 JSON 总大小最多 4096 bytes（含 chunked）。
+
+没有公共注册或正式 demo seed。`backend/tests/test_auth_integration.py` 的 user fixture 在指定
+隔离库里创建唯一账号和随机密码，通过 PasswordSecurity.hash 存 Argon2id；验证脚本同样只在新库
+创建测试用户，不输出密码。运行下方完整脚本即可自动验证登录，无需默认账号或生产密码。
+
+同源浏览器的最小调用方式（loginName/password 使用受控测试 fixture 准备的值）：
+
+```javascript
+async function csrf() {
+  const response = await fetch('/api/v1/auth/csrf', {
+    credentials: 'same-origin',
+    headers: { 'X-CSRF-Fetch': '1' },
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('CSRF credential unavailable')
+  return (await response.json()).csrf_token
+}
+const loginResponse = await fetch('/api/v1/auth/login', {
+  method: 'POST', credentials: 'same-origin',
+  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await csrf() },
+  body: JSON.stringify({ login_name: loginName, password }),
+})
+if (!loginResponse.ok) throw new Error('Login failed')
+const identity = await fetch('/api/v1/auth/me', { credentials: 'same-origin' })
+const logoutResponse = await fetch('/api/v1/auth/logout', {
+  method: 'POST', credentials: 'same-origin',
+  headers: { 'X-CSRF-Token': await csrf() },
+})
+```
+
+浏览器自动设置修改请求的 Origin；JavaScript 不应自行设置这个受限 Header。
+命令行 HTTP 客户端必须显式设置与 TRUSTED_ORIGINS 一致的 Origin，先用 Cookie jar 调用 csrf，
+再同时发送取得的 Cookie 与 X-CSRF-Token。登录成功清除预登录 Cookie；下一次 csrf 返回 Session
+绑定签名。缺失/错误 CSRF 或非法/缺失 Origin 均拒绝；SameSite 不能代替这两项服务端检查。
+所有后续 Cookie 业务 Router 必须挂到 `api/router.py` 的受保护入口。
+
+Session 固定 8 小时，过期、撤销或用户禁用立即影响后续认证；logout 只撤销当前 Session，
+重复/失效退出返回 401。数据库创建/撤销提交失败为 503，无成功 Cookie 或删除 Cookie。
+当前使用每请求短查询的提交态快照，撤销不回滚已开始请求或已产生效果。
+
+Argon2id 使用 pwdlib 0.3.1 / argon2-cffi 25.1.0：64 MiB、t=3、p=4，库生成 16-byte 盐、32-byte hash。
+默认每 API 进程最多 2 个密码计算在线程中运行；不存在用户也验证 dummy hash。Redis 原子固定窗口
+默认 300 秒：来源 60 次、规范化账号 10 次；成功/失败尝试都计数，返回 429 后等待窗口，不做账号封禁。
+Redis 不可用返回 503，不降级成进程内计数。来源与账号写入 Redis 前 hash，不保存原始密码/Token。
+
+生产必须 ENV=production + Secure/HttpOnly/__Host- Cookie + HTTPS 精确 Origin + 独立 CSRF_SECRET +
+非默认数据库/Redis 认证凭据；路径固定 /，Domain 不设置，SameSite 默认 lax，none 必须 Secure。
+配置示例的无认证本地 Redis 不能直接用于生产。安全组合在启动时校验，包含注入 Settings 的情况。
+CSRF_SECRET 为 secrets.token_hex(32) 生成的随机值，所有 API 进程共享；轮换使旧 CSRF 凭证失效，
+但不撤销 PostgreSQL Session，客户端重新获取 csrf 即可。dev/test 未配置时每进程生成临时密钥，
+重启或跨进程会让旧 CSRF 失效；Session 仍可查验。预登录签名凭证有效 10 分钟，不单独持久化/撤销。
+
+认证方案遵循 [OWASP CSRF 指南](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)，
+签名/时效复用 [ItsDangerous](https://itsdangerous.palletsprojects.com/en/stable/timed/)，
+代理配置核对 [Vite server.proxy](https://vite.dev/config/server-options#server-proxy)，
+原子限流核对 [Redis INCR](https://redis.io/docs/latest/commands/incr/)。
 
 ## 数据库与内部产物合同
 
@@ -123,20 +191,27 @@ uv run pytest backend/tests
 uv run alembic -c backend/alembic.ini check
 ```
 
-默认 pytest 运行 43 个配置/API/本地文件测试，明确 deselect 19 个依赖真实服务的测试；
-这不等于数据库集成验收。完整隔离验证入口：
+默认 pytest 当前运行 67 个测试，明确 deselect 36 个依赖真实服务的测试，不将未运行项算作通过。
+完整 Unit 1.3 验证入口：
 
 ```bash
-uv run python scripts/verify_unit12.py
+uv run python scripts/verify_unit13.py
 ```
 
-此入口要求 ENV=development/test 和具备 CREATE DATABASE 权限的本地开发账户：
-创建新的 agenthub_unit12_test_<uuid> 数据库，从零迁移、重复升级，再运行全部 62 个测试；
-启动/关闭真实 Uvicorn 两次，并验证已提交产物仍可读。不会清空现有数据库。
-测试数据库及 .data/unit12-verification 下的结果/日志被保留，后续清理需单独授权。
-故障测试有意留下 pending/failed 元数据和临时材料；它们与默认开发业务库分离。
+脚本要求 ENV=development/test 和本地 CREATE DATABASE 权限，自动使用 UTF-8 locale：
+创建新的 agenthub_unit13_test_<uuid>，先升级到 Unit 1.2 并保存真实 Artifact，再升级 head、
+重复升级、Alembic check，运行全部 103 个测试。Redis 使用本地服务的逻辑库 15 和随机 test namespace，
+不 flush 或改动业务键。启动本次 Uvicorn/Vite 空闲端口进程，验证代理 Cookie/login/me、重启后身份、
+logout 失效、非法 CSRF 和伪造 Forwarded/XFF 无法绕过来源限流；只停止脚本自己的进程组。
+测试库及 .data/unit13-verification/<database>/ 的无敏感 result.json/日志保留，清理需另行授权。
+也可配置 TEST_DATABASE_URL（只允许 agenthub_unit12_test_<uuid> 或 agenthub_unit13_test_<uuid>）
+与 TEST_REDIS_URL 后运行 `uv run pytest backend/tests --integration`；先确保隔离库已 upgrade head。
+旧 verify_unit12.py 仍可验证产物/health 回归，但不会验证 Vite 认证链路。
 
-只有 artifacts 和 alembic_version 两张表。已执行的首个迁移保持不变，第二个迁移只修正 CHECK 名称；
-未执行 downgrade。当前实测平台为 macOS/Apple Silicon；POSIX 文件系统实现不承诺 Windows 兼容，
-原子发布也不等于所有断电场景下的持久性保证。本地确定性验证没有 Mock/Live 模型或外部连接器，
-不证明生产部署、模型质量、完整认证/ACL、长期任务恢复或外部写入可靠性。
+迁移链为 0001_artifacts → 0002_constraint_names → 0003_users_sessions；只有 artifacts/users/sessions
+和 alembic_version 四张表。已有两条迁移未修改，不启动 create_all，不自动 downgrade 或删除数据。
+若当前终端为 ASCII locale，迁移命令前设置 `LC_ALL=en_US.UTF-8`，避免 Alembic 读取中文 ini 注释失败。
+本地测试覆盖真实 PostgreSQL/Redis/HTTP，HTTPS Cookie 属性由 ASGI HTTPS 客户端验证；尚未验证真实
+浏览器 Cookie 行为、生产 TLS/反向代理、多宿主部署和负载性能。没有 Mock/Live 模型，不证明生产落地。
+Tenant/Project/Membership/Role/Resource ACL/Principal 和 dev/test 幂等 seed 留待 Unit 1.4；
+SSO/OIDC、完整登录 UI、会话管理和完整 IAM 不在本 Unit 范围。

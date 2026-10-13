@@ -29,5 +29,5 @@ def test_factory_accepts_explicit_settings(monkeypatch: pytest.MonkeyPatch) -> N
     settings = Settings(env="test", _env_file=None)
     application = create_app(settings=settings)
     with TestClient(application) as client:
-        assert application.state.settings is settings
+        assert application.state.settings == settings
         assert client.get("/health").json() == {"status": "ok"}

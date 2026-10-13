@@ -589,6 +589,7 @@ Phase 7 Runner：
 | POST /auth/login                  | 登录与 session  | 公共，限流         |
 | POST /auth/logout                 | 撤销 session   | 已登录           |
 | GET /auth/me                      | 当前身份与权限      | 已登录           |
+| GET /auth/csrf                    | 登录前或会话绑定的防伪凭证 | 可信同源来源 |
 | GET /projects                     | 授权项目列表       | 已登录           |
 | GET /connectors                   | 可用连接器及脱敏状态   | 项目连接器管理       |
 | POST /connectors                  | 创建/更新连接器配置引用 | 项目连接器管理       |
@@ -612,6 +613,16 @@ Phase 7 Runner：
 | POST /tool-actions/{id}/reconcile | 请求重新对账       | 授权动作管理        |
 | POST /evaluation-runs             | 创建评测         | 项目评测管理        |
 | GET /evaluation-runs/{id}         | 结果与配置        | 授权评测读取        |
+
+Unit 1.3 的 `/auth/me` 暂时只返回 `{id, login_name}`，没有 tenant/role/project 权限字段。
+登录体为 `{login_name, password}`；账号去除首尾空白、转小写，只允许 1–128 个 ASCII
+字母、数字及 `_.@+-`（首字符为字母/数字）。登录成功返回相同最小身份；Session 只在
+HttpOnly Cookie 中返回。`/auth/logout` 成功为 204，重复/失效会话为 401。
+修改请求缺失/非法 Origin 或 CSRF 返回 403；依赖不可用为 503，登录限流为 429。
+`/auth/csrf` 返回 `{csrf_token, purpose}`，不缓存；登录前签名 double-submit 有效 10 分钟，
+登录后签名凭证绑定当前有效 Session，需在登录成功后重新获取。凭证获取要求可信 Origin，
+或浏览器同源 Fetch Metadata + `X-CSRF-Fetch: 1`；修改请求必须携带可信 Origin 和
+`X-CSRF-Token`。后续 Cookie 业务 Router 统一挂载到受保护的 `/api/v1` 入口。
 
 创建 run 支持 HTTP Idempotency-Key。作用域为 tenant、actor、操作和 key；请求 hash 相同返回已有 run，不同返回冲突。不能把不同业务请求合并。
 
@@ -701,17 +712,32 @@ inputs/approval decision 包含预期 state/action version。重复提交幂等�
 
 ### 15.1 Unit 1.2 当前产物持久化合同
 
-当前只建立 artifacts 元数据表，不提前创建后续业务表。文件字节使用开发本地文件卷；
+Unit 1.2 阶段只建立 artifacts 元数据表，不提前创建后续业务表。文件字节使用开发本地文件卷；
 元数据包含资源归属、storage key、SHA-256、size、UTC 时间、状态及失败分类。
 保存采用 pending 提交 → 临时文件 → 不覆盖目标的原子发布 → ready 提交；
 只有 ready 可经受控内部服务读取。文件已发布但元数据提交失败时保留可诊断状态，
 不报告成功、不自动删除或重试；本 Unit 的诊断默认只读，不提供后台恢复调度。
 
 Unit 1.2 的归属来自内部可信调用上下文，不绑定匿名 HTTP 或模型自报字段。
-完整 Session、Principal、RBAC/ACL 及租户/项目外键由 Unit 1.3–1.4 接入。
+Session 由 Unit 1.3 接入；Principal、RBAC/ACL 及租户/项目外键由 Unit 1.4 接入。
 没有产物上传/下载 HTTP 接口。现有 /health 保留进程存活合同；/health/ready
 使用有超时的 PostgreSQL/Redis 检查，不可用时返回 503 和统一错误/request_id。
 具体本地文件安全与一致性取舍见 [ADR 0001](adr/0001-unit12-storage-and-database.md)。
+
+### 15.2 Unit 1.3 当前认证持久化合同
+
+新增 users 与 sessions，保留 artifacts 及既有迁移。User 使用 UUID、唯一规范化 login_name、
+Argon2id password_hash、is_active 和 UTC created_at/updated_at；数据库 CHECK 拒绝未规范化标识。
+Session 使用 UUID、users 外键、唯一 SHA-256 token_hash、UTC created_at/expires_at/revoked_at。
+256 bit 随机 token 只通过 Cookie 返回，数据库不保存原始 token；默认固定 8 小时，不滑动续期。
+每次认证直接查询 PostgreSQL 检查有效期、撤销和用户启用状态，不使用 Session 状态缓存。
+登录读取用户后关闭事务，再执行有并发上限的线程密码验证；短事务重查并锁定用户后创建 Session。
+注销仅在撤销提交成功后清 Cookie，只撤销当前会话；失败不能报告已经失效。
+生产配置要求 Secure、HttpOnly、host-only `__Host-` Cookie（Path=/）、HTTPS 可信 Origin、
+显式随机 CSRF 密钥和非默认依赖凭据；非法组合启动失败。
+Redis 原子脚本按连接来源及规范化账号计数，默认 300 秒内来源 60 次、账号 10 次，
+Redis 不可用时登录失败关闭。当前启动命令禁用 Uvicorn proxy headers，不直接信任 Forwarded/XFF。
+Unit 1.3 只提供 UserIdentity，尚无 tenant/project/membership/role/ACL、正式 seed 或 IAM 管理。
 
 ## 16. 工程目录
 
