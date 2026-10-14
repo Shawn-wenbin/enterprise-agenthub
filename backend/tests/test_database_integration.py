@@ -111,7 +111,7 @@ async def test_upgrade_head_replay_preserves_rows(database: Database) -> None:
         assert await session.get(Artifact, preserved.artifact_id) is not None
         assert (
             await session.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0003_users_sessions"
+            == "0004_tenant_authorization"
         )
         tables = (
             (
@@ -122,7 +122,17 @@ async def test_upgrade_head_replay_preserves_rows(database: Database) -> None:
             .scalars()
             .all()
         )
-        assert set(tables) == {"artifacts", "alembic_version", "users", "sessions"}
+        assert set(tables) == {
+            "artifacts",
+            "alembic_version",
+            "users",
+            "sessions",
+            "tenants",
+            "memberships",
+            "membership_roles",
+            "projects",
+            "resource_acl",
+        }
         names = (
             (
                 await session.execute(

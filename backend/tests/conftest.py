@@ -33,11 +33,12 @@ def pytest_collection_modifyitems(
         except Exception:
             name = ""
         if not re.fullmatch(
-            r"agenthub_unit1[23]_test_[0-9a-f]{32}", name
+            r"agenthub_unit1[234]_test_[0-9a-f]{32}", name
         ) or not os.environ.get("TEST_REDIS_URL"):
             raise pytest.UsageError(
                 "--integration requires TEST_DATABASE_URL targeting an isolated "
-                "agenthub_unit12_test_* or agenthub_unit13_test_* database "
+                "agenthub_unit12_test_*, agenthub_unit13_test_* "
+                "or agenthub_unit14_test_* database "
                 "and TEST_REDIS_URL"
             )
         return
@@ -76,6 +77,7 @@ def isolate_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterato
         "LOGIN_RATE_SOURCE_LIMIT",
         "LOGIN_RATE_ACCOUNT_LIMIT",
         "LOGIN_RATE_NAMESPACE",
+        "DEMO_SEED_PASSWORDS",
     ):
         monkeypatch.delenv(key, raising=False)
     get_settings.cache_clear()
@@ -105,6 +107,7 @@ def integration_settings(tmp_path: Path) -> Settings:
         database_url=os.environ["TEST_DATABASE_URL"],
         redis_url=os.environ["TEST_REDIS_URL"],
         artifact_root=tmp_path / "volume",
+        login_rate_namespace="test:integration:" + uuid4().hex,
         _env_file=None,
     )
 

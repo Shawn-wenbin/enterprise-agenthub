@@ -55,7 +55,10 @@ class RequestContextMiddleware:
                     for k, v in message.get("headers", [])
                     if k.lower() != b"x-request-id"
                 ]
-                if scope["path"].startswith("/api/v1/auth/"):
+                if (
+                    scope["path"].startswith("/api/v1/auth/")
+                    or scope["path"] == "/api/v1/projects"
+                ):
                     headers = [
                         (k, v) for k, v in headers if k.lower() != b"cache-control"
                     ]

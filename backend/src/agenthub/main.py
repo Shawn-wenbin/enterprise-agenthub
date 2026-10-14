@@ -15,6 +15,7 @@ from agenthub.auth.body_limit import LoginBodyLimitMiddleware
 from agenthub.auth.rate_limit import LoginRateLimiter
 from agenthub.auth.security import CsrfSecurity, PasswordSecurity
 from agenthub.auth.service import AuthService
+from agenthub.authorization.service import AuthorizationService
 from agenthub.core.config import Settings, get_settings
 from agenthub.core.http_errors import install_error_handlers
 from agenthub.core.request_context import RequestContextMiddleware, configure_logging
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             current.artifact_root, current.artifact_max_bytes
         )
         application.state.database = database
+        application.state.authorization = AuthorizationService(database)
         application.state.redis = redis
         application.state.artifacts = ArtifactService(
             database,

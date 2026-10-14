@@ -193,7 +193,10 @@ def main() -> None:
             headers={"X-CSRF-Token": csrf},
         )
         assert response.status_code == 200
-        assert client.get("/api/v1/auth/me").json() == response.json()
+        assert client.get("/api/v1/auth/me").json() == {
+            **response.json(),
+            "memberships": [],
+        }
         token = client.cookies["agenthub_session"]
         assert client.post("/api/v1/auth/logout").status_code == 403
         assert client.get("/api/v1/auth/me").status_code == 200
@@ -241,7 +244,7 @@ def main() -> None:
     asyncio.run(sentinel(isolated, preserved))
     result = {
         "database": name,
-        "migration": "0003_users_sessions",
+        "migration": "0004_tenant_authorization",
         "artifact_preserved": preserved,
         "api_restart": "passed",
         "vite_proxy": "passed",

@@ -111,7 +111,10 @@ async def test_login_me_cookie_database_logout_and_no_secrets(
             stored_user.password_hash.startswith("$argon2id$")
             and user[1] not in stored_user.password_hash
         )
-    assert (await client.get("/api/v1/auth/me")).json() == response.json()
+    assert (await client.get("/api/v1/auth/me")).json() == {
+        **response.json(),
+        "memberships": [],
+    }
     csrf = await credential(client)
     response = await client.post(
         "/api/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf}
@@ -437,7 +440,17 @@ async def test_unique_users_hashes_fk_and_exact_table_set(
             .scalars()
             .all()
         )
-    assert set(tables) == {"artifacts", "users", "sessions", "alembic_version"}
+    assert set(tables) == {
+        "artifacts",
+        "users",
+        "sessions",
+        "alembic_version",
+        "tenants",
+        "memberships",
+        "membership_roles",
+        "projects",
+        "resource_acl",
+    }
 
 
 async def test_secure_host_cookie_over_https(

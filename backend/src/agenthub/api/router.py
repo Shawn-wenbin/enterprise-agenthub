@@ -3,7 +3,9 @@
 from fastapi import APIRouter, Depends
 
 from agenthub.api.auth import router as auth_router
+from agenthub.api.projects import router as projects_router
 from agenthub.auth.dependencies import protect_unsafe_request
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(protect_unsafe_request)])
 router.include_router(auth_router)
+router.include_router(projects_router)

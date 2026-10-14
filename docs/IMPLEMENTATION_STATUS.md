@@ -1,5 +1,152 @@
 # IMPLEMENTATION_STATUS
 
+最后更新：2026-10-14
+当前 Phase：1
+当前 Unit：1.4 — 租户、项目、角色与资源授权
+Unit 状态：**verified**（当前 Unit 退出条件已通过；完整历史归属收紧与后续资源权限见限制）
+当前模式：本地确定性工程测试 + 真实 PostgreSQL/Redis/HTTP，无模型或外部连接器。
+
+## Unit 1.4 范围与基线
+
+开工 Git 工作区干净，基线 bfd391d；读取 AGENTS、PROJECT_SPEC 第 4/F01/12/13/15 节、
+Unit 1.4 计划、既有状态和 accepted ADR 0001。复用 Unit 1.3 UserIdentity、AuthService、
+Session Cookie、CSRF/Origin、错误结构和短事务，不重写认证。当前迁移 head 为 0004_tenant_authorization。
+仅实现本 Unit，未开始 1.5，无 commit/push/部署，无清库或 Docker Volume 删除。
+无新增依赖，uv.lock、前端依赖和已应用 0001–0003 迁移未修改。
+
+## Unit 1.4 实现与数据模型
+
+- tenants/models.py：Tenant 的全局唯一 slug、启用标志与 UTC 时间；Membership 关联现有 User，
+  `(tenant_id, user_id)` 唯一，停用保留历史；membership_roles 以 `(membership_id, role)` 为主键。
+- projects/models.py：Project 的 `(tenant_id, slug)` 唯一，允许跨租户同名同 slug；启用标志与 UTC 时间。
+  resource_acl 显式保存 tenant/project/membership/scope，以 `(membership_id, project_id, scope)` 唯一。
+- ID 沿用 Unit 1.3 的 UUID 字符串编码。slug 去首尾空白并转 ASCII 小写，1–63 字符，
+  允许 `[a-z0-9-]` 且首字符为字母/数字；数据库 CHECK 拒绝未规范化值。
+- Tenant/User 的 FK 与 projects/memberships 的复合唯一键保证引用完整性；ACL 的两组复合 FK
+  `(tenant_id, project_id)`、`(tenant_id, membership_id)` 阻止跨租户关联。角色和 scope 有固定 CHECK。
+- authorization/policy.py：固定 tenant_admin/developer/reviewer/viewer，能力集合不可变；
+  scope 为 read/develop/review/manage。当前项目元数据读取接受明确 scope，管理只允许 Admin。
+  Admin 无 ACL 例外明确限制项目元数据，不授予内容、外部写入或审批权限。
+
+## Principal 与统一授权
+
+authorization/service.py 的 frozen Principal 包含 user_id、tenant_id、membership_id、frozenset roles。
+build_principal(UserIdentity, tenant_id) 从有效 User/Tenant/Membership 和成员角色构造，
+客户端 tenant_id 只是目标选择；不合并不同租户的角色，也不把权限存入 Cookie。
+require_tenant_access / require_project_access 每次重查有效性和当前角色，不采信旧 Principal 的角色快照。
+无 ACL、跨租户、停用、不存在的项目统一 resource_not_found/404；可见对象上的能力不足返回
+authorization_denied/403。身份无效为 401，必要依赖不可用沿用 dependency_unavailable/503。
+
+list_projects 从可信 UserIdentity 对 SQL JOIN/EXISTS 授权集合查询，不加载全库后过滤。
+单用户的多个有效 Membership 形成项目并集。无授权缓存，Cookie 不变也能观察已提交撤权。
+当前授权是读取时快照，不保证取消正在执行的请求；后续敏感写入需在实际边界重新鉴权并解决并发竞争。
+未来 Run/报告/证据/动作/审批 Action 只定义角色能力；当前项目入口拒绝缺少真实资源上下文的调用，
+返回 authorization_context_required，不冒充已经实现 owner、自审、动作版本或原文权限检查。
+
+## 真实 API 合同
+
+- GET /api/v1/projects：可信 Session 认证；响应 `[{id, tenant_id, slug, name}]`。
+  可选 tenant_id 仅收窄授权集合；无可见项目返回 `[]`。401/503 使用统一错误结构。
+  未声明的 role/user/header 等客户端字段不会授予权限。Admin 仅获得本租户必要项目元数据。
+- GET /api/v1/auth/me：保留 id/login_name 原语义，新增
+  `memberships: [{tenant_id, tenant_slug, tenant_name, membership_id, roles}]`。
+  只展示本用户有效 Tenant/Membership，角色来自当前数据库；无成员关系为 `[]`。
+  登录响应仍为原最小身份；不暴露密码、token、CSRF secret 或其他用户权限。
+- 两个响应均 no-store；Router 统一挂到既有 /api/v1 安全入口。没有 Project CRUD、成员管理或产物公开 API。
+  测试中的项目 ID probe 仅存在于测试 fixture，也复用认证和 CSRF/Origin Guard，不注册到产品应用。
+
+## 显式 Demo Seed
+
+实际命令：`uv run python -m agenthub.cli seed-demo`。
+配置 DEMO_SEED_PASSWORDS JSON 的四个 key：demo-a-developer、demo-a-reviewer、
+demo-b-developer、demo-b-reviewer；值为本地生成的 12–256 字符密码。
+.env.example 只有说明/空配置，无有效默认密码。CLI 不输出密码；使用已有 Argon2id 哈希实现。
+
+seed 建立 demo-a/demo-b、两个同名同 slug demo-project、四个独立用户、4 Membership、4 Role、4 ACL。
+开发者授 develop，审阅者授 review；Admin/Viewer/多角色由独立权限 fixture 验证，不增加多余演示账号。
+只允许 development/test，production 拒绝、未知 ENV 配置失败、缺失/不完整密码失败。
+不在启动或迁移时执行；本次默认开发库 demo tenant count 为 0，演示账号仅在隔离验证库创建。
+
+固定唯一键和 UUID5 标识保证可重复；数据库 advisory transaction lock 序列化并发 seed。
+密码计算期间释放连接，写入前重新核对状态，全部记录一个短事务提交。
+第二次返回 unchanged，不重置密码；停用/删除 Membership、撤销 Role/ACL、已有自然键或数据冲突
+返回 seed_conflict，不覆盖或静默重新授权。提交失败回滚全部创建，不报告成功。
+
+## Artifact 归属审计与安全迁移
+
+迁移前本地开发库 head=0003，Artifact count=0；原 tenant_id/project_id 为 String(128)、必填、无 FK。
+不能把空开发库当成非空保留证据。隔离旧库在 0003 上建立 ready/pending/failed 三条 Artifact，
+包括 verification/restart 和无法确认的历史标识，以及既有 User/Session；升级 0004、重复升级后
+逐字段比较完全保留，原文件字节仍可通过原受控内部服务读取。
+
+保留原字段类型/值，不删除、不重分配、不造默认租户。新增 nullable authorized_project_id，
+复合 FK `(tenant_id, authorized_project_id)` 指向真实 Project，CHECK 要求非空值等于 project_id。
+旧记录关联保持 NULL；当前内部保存只对数据库精确匹配的归属填入关联。NULL 代表未确认归属，
+不是公开读取授权。Project ACL 不传入 ArtifactService，不放宽既有内部范围限制。
+全部旧原字段的非空 FK 仍需独立授权的可信映射/数据确认，再回填与收紧；具体路径见
+[ADR 0002](adr/0002-unit14-authorization-and-legacy-artifacts.md)。没有 Artifact 对外读取接口。
+本地开发库升级后 count 仍 0，迁移没有 Seed。0001–0003 未重写，未 create_all/drop/recreate。
+
+## 实际验证 — verified
+
+- uv run ruff check .：All checks passed。
+- uv run ruff format --check .：最终 68 files already formatted。
+- uv run mypy backend/src：strict 成功，42 源码文件。
+- uv run pytest backend/tests：77 passed、56 deselected；真实依赖用例不混入本地通过数。
+- uv run python scripts/verify_unit14.py：**133 passed**，其中 77 本地、56 真实集成（含 20 新授权集成用例）。
+  PostgreSQL 17.11、Redis 7.4.11；逻辑库 15 + 随机 test namespace，无 flush。
+  隔离 fresh DB：agenthub_unit14_test_5b7dd45c2a7140c8b6666049512e8f2a；
+  隔离 legacy DB：agenthub_unit14_test_9df7f63fc3e44f34b8e8ef636e5ee912。
+  新库从零升级、旧库升级、重复 upgrade head、两库 alembic check 均通过；历史三种 Artifact/User/Session 保留。
+- 同脚本 Seed CLI：首次 created、再次 unchanged；缺失配置、production、
+  未知 ENV 拒绝且数据库快照不变。ASGI 集成验证配置变更不重置密码、并发 seed 只有一次创建、commit 失败全量回滚，
+  Membership 停用/删除与 Role/ACL 删除后 seed 不恢复；旧 Artifact/Session 和用户密码保持不变。
+- 同脚本真实 Uvicorn TCP HTTP：四个 Developer/Reviewer 通过原 Auth API 登录，Session Cookie 到
+  /projects、/auth/me 生效；跨租户筛选/伪造 role 无扩大，原 Cookie 下 ACL/Role/Membership 撤权生效。
+- 真实 ASGI HTTP + PostgreSQL/Redis：两租户同 slug 隔离、无 Cookie 401、跨租户 project_id/隐藏资源与
+  不存在统一 404、伪造 tenant/role/user/header、无 Membership/无角色/无 ACL 默认拒绝，
+  多 Tenant 项目并集和角色分离、多角色组合、Admin 元数据例外、Viewer 写能力拒绝，
+  ACL/Membership/Tenant/Project/Role 撤权与旧 Principal 拒绝；数据库非法跨租户 ACL/重复/角色/scope 约束。
+- 补充边界在同一 legacy 隔离库执行：uv run pytest backend/tests/test_authorization_integration.py
+  --integration -k 'http_two_tenants or artifact_confirmed'，2 passed、18 deselected；
+  实际 Cookie → Principal → ACL 项目准入成功；同时伪造 Artifact 原 project_id 和新关联以满足 CHECK，
+  仍被跨租户复合 FK 拒绝。其余已通过用例未再次计为新增验证。
+- uv run python scripts/verify_unit13.py：另一个隔离库 agenthub_unit13_test_d6b51d06b9944a169ec244d697da468e，
+  完整 **133 passed**；Vite 真实代理登录/Cookie/身份、缺失 CSRF、API 重启后 Session 保留、logout 撤销，
+  伪造 Forwarded/XFF 不绕过限流。原 Auth/CSRF/Origin/限流/健康/数据库/Artifact 回归均通过。
+- LC_ALL=en_US.UTF-8 uv run alembic -c backend/alembic.ini upgrade head：默认开发库 0003 → 0004，
+  重复执行成功；同 locale 的 alembic check：No new upgrade operations detected。前后 Artifact count=0。
+- pnpm -C frontend typecheck、pnpm -C frontend build：成功，Vite 8.3.4；无业务前端修改。
+- git diff --check：通过；Git 忽略验证文件/.env/构建产物，无 commit/push/部署。
+
+Unit 1.4 最终证据：.data/unit14-verification/df4e7712f546466ab1cf24be2de05e3c/result.json、api.log。
+Unit 1.3 回归证据：.data/unit13-verification/agenthub_unit13_test_d6b51d06b9944a169ec244d697da468e/result.json、
+api-0.log/api-1.log/vite.log。全部 Git ignored，不写入原始密码或 Session/CSRF 凭据。
+首轮隔离库 87009a8763734bb1aea1cc547969d917 / aca0b5ffc5bb4781b8ba39f67e054d1f 保留：
+132 passed、1 failed（项目响应未 no-store），修正实现后重跑完整验收，不删除断言或清库。
+Alembic 首次生成遇到已有中文 ini 的 ASCII locale 失败，使用显式 UTF-8 locale 重试；已应用旧迁移未修改。
+
+## 限制、unverified 与 blocked
+
+- **unverified / 后续范围**：真实 Run 资源/owner 授权、RAG/Evidence 原文 ACL、Agent/ToolGateway/MCP、
+  审批动作版本/目标/发起人上下文、完整成员管理 UI、SSO/OIDC、生产 IAM 安全运维；当前 Action 常量不代表实现。
+- **unverified**：生产 TLS/代理、多进程负载、真实浏览器、多宿主撤权竞争和性能。当前真实 HTTP/ASGI
+  工程结果不推广为生产落地、模型任务质量或未来原文读取安全验收。
+- 旧 Artifact 原字段完整 FK 收紧需要历史数据可信确认；当前 nullable 关联已有完整 FK/CHECK，
+  无公开读取和自动回填。内部范围只用于可信服务端代码，不能从未来 HTTP/模型字段直接构造。
+- **blocked**：无本 Unit 必要退出条件阻塞。没有 Mock 模型或连接器验证，不用 Mock 结果替代真实依赖。
+
+## Unit 1.5 进入条件
+
+Unit 1.1–1.4 已 verified，Phase 1 总体仍 unverified。本次止于 1.4。
+1.5 需用户单独授权，建立 OrderLab 的 synthetic 故障快照、公开复现、manifest/version/hash 和
+3–5 个初始 case 格式，并保持 Agent-visible 与 Grader-only 分离；不得将隐藏答案放进运行时可读目录。
+后续业务复用当前 UserIdentity → 租户 Principal → AuthorizationService，具体资源与动作需补自己的上下文校验。
+
+---
+
+## Unit 1.3 验收历史（2026-10-13，原记录保留）
+
 最后更新：2026-10-13
 当前 Phase：1
 当前 Unit：1.3 — Session 登录与安全请求

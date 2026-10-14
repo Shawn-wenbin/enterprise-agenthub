@@ -93,6 +93,9 @@ class Settings(BaseSettings):
         pattern=r"^[a-zA-Z0-9:_-]{1,128}$",
         validation_alias="LOGIN_RATE_NAMESPACE",
     )
+    demo_seed_passwords: dict[str, SecretStr] = Field(
+        default_factory=dict, validation_alias="DEMO_SEED_PASSWORDS", repr=False
+    )
 
     @property
     def login_csrf_cookie_name(self) -> str:

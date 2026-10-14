@@ -16,6 +16,7 @@ from agenthub.artifacts.store import ArtifactStore, StorageError, StoredContent
 from agenthub.core.errors import AppError
 from agenthub.core.request_context import log_event
 from agenthub.db.database import Database
+from agenthub.projects.models import Project
 
 
 def content_hash(content: bytes) -> str:
@@ -25,8 +26,8 @@ def content_hash(content: bytes) -> str:
 class InternalArtifactScope(BaseModel):
     """由可信服务端代码构造，不绑定 HTTP 请求或模型参数。
 
-    此处限定资源归属范围，不提供身份认证。单元 1.4 将补充 Principal、
-    成员关系与 ACL 检查，以及租户和项目外键。
+    此处限定内部资源归属，不提供身份认证，也不接受 Principal 或项目 ACL。
+    后续公开读取必须另外检查已确认归属和具体产物权限；项目 ACL 不授予产物读取。
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -80,12 +81,19 @@ class ArtifactService:
         key = f"obj_{secrets.token_hex(32)}"
         try:
             async with self.database.session() as session, session.begin():
+                authorized_project_id = await session.scalar(
+                    select(Project.id).where(
+                        Project.id == scope.project_id,
+                        Project.tenant_id == scope.tenant_id,
+                    )
+                )
                 session.add(
                     Artifact(
                         artifact_id=artifact_id,
                         storage_key=key,
                         tenant_id=scope.tenant_id,
                         project_id=scope.project_id,
+                        authorized_project_id=authorized_project_id,
                         media_type=media_type,
                         status="pending",
                     )

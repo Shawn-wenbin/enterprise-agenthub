@@ -14,6 +14,9 @@ from agenthub.auth.rate_limit import LoginRateLimiter
 from agenthub.auth.schemas import CsrfResponse, LoginRequest, UserIdentity
 from agenthub.auth.security import CsrfSecurity
 from agenthub.auth.service import AuthenticatedSession, AuthService
+from agenthub.authorization.dependencies import get_authorization_service
+from agenthub.authorization.schemas import CurrentUserView
+from agenthub.authorization.service import AuthorizationService
 from agenthub.core.config import Settings
 from agenthub.core.errors import AppError, ErrorResponse
 
@@ -122,9 +125,14 @@ async def login(
     return identity
 
 
-@router.get("/me", response_model=UserIdentity)
-async def me(user: Annotated[UserIdentity, Depends(get_current_user)]) -> UserIdentity:
-    return user
+@router.get("/me", response_model=CurrentUserView)
+async def me(
+    user: Annotated[UserIdentity, Depends(get_current_user)],
+    authorization: Annotated[AuthorizationService, Depends(get_authorization_service)],
+) -> CurrentUserView:
+    return CurrentUserView(
+        **user.model_dump(), memberships=await authorization.memberships(user)
+    )
 
 
 @router.post("/logout", status_code=204)

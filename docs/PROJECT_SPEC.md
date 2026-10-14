@@ -614,7 +614,12 @@ Phase 7 Runner：
 | POST /evaluation-runs             | 创建评测         | 项目评测管理        |
 | GET /evaluation-runs/{id}         | 结果与配置        | 授权评测读取        |
 
-Unit 1.3 的 `/auth/me` 暂时只返回 `{id, login_name}`，没有 tenant/role/project 权限字段。
+Unit 1.3 的 `/auth/me` 原合同为 `{id, login_name}`；Unit 1.4 保留这两个字段，扩展
+`memberships: [{tenant_id, tenant_slug, tenant_name, membership_id, roles}]`，只包含当前用户有效的
+Tenant/Membership，角色使用 `tenant_admin/developer/reviewer/viewer`。无有效成员关系返回空数组。
+`GET /projects` 返回 `[{id, tenant_id, slug, name}]`，从数据库授权范围查询多个租户的项目并集；
+可选 `tenant_id` 只收窄结果。无 Session 为 401，无可见项目为 `[]`，必要依赖不可用为 503。
+Tenant Admin 可查看本租户项目的必要元数据；该例外不授予项目内容权限。响应禁止缓存。
 登录体为 `{login_name, password}`；账号去除首尾空白、转小写，只允许 1–128 个 ASCII
 字母、数字及 `_.@+-`（首字符为字母/数字）。登录成功返回相同最小身份；Session 只在
 HttpOnly Cookie 中返回。`/auth/logout` 成功为 204，重复/失效会话为 401。
@@ -738,6 +743,26 @@ Session 使用 UUID、users 外键、唯一 SHA-256 token_hash、UTC created_at/
 Redis 原子脚本按连接来源及规范化账号计数，默认 300 秒内来源 60 次、账号 10 次，
 Redis 不可用时登录失败关闭。当前启动命令禁用 Uvicorn proxy headers，不直接信任 Forwarded/XFF。
 Unit 1.3 只提供 UserIdentity，尚无 tenant/project/membership/role/ACL、正式 seed 或 IAM 管理。
+
+### 15.3 Unit 1.4 当前授权持久化合同
+
+新增 tenants、memberships、membership_roles、projects、resource_acl，使用既有 UUID 字符串编码
+和 UTC 时间。slug 规范化为去首尾空白、ASCII 小写，允许 1–63 个 `[a-z0-9-]` 字符，首字符为
+字母/数字；数据库 CHECK 拒绝未规范化值。Tenant slug 全局唯一，Project `(tenant_id, slug)` 唯一。
+Membership `(tenant_id, user_id)` 唯一，多角色通过 `(membership_id, role)` 复合主键关联。
+ACL 仅针对当前 Project，scope 为 read/develop/review/manage；复合外键禁止跨租户关联，默认拒绝。
+Tenant/Membership/Project 停用后不再用于新授权。当前 Principal/授权判定不缓存，每次读取已提交状态。
+Tenant Admin 的项目元数据例外与内容权限分离；未来资源 Action 仍需具体业务上下文。
+
+Artifact 保留原归属字段和值，追加 nullable authorized_project_id；与 tenant_id 组合的外键指向
+真实 Project，CHECK 约束非空关联等于原 project_id。无法确认的历史关联保持 NULL，不自动创建
+默认归属，也不进入未来公开读取范围。当前 ArtifactService 继续仅供可信内部调用，Project ACL
+不授予 Artifact 内容权限。完整旧字段外键收紧需另行确认历史映射，见 [ADR 0002](adr/0002-unit14-authorization-and-legacy-artifacts.md)。
+
+显式 `uv run python -m agenthub.cli seed-demo` 只在 development/test 创建两个模拟 Tenant、
+两个同 slug Project、四个独立 Developer/Reviewer 账号及成员/角色/ACL。本地
+`DEMO_SEED_PASSWORDS` JSON 按账号名配置密码，不提供默认值；重复执行不重置密码，
+人为撤权、删除或已有记录冲突会失败，不静默恢复授权。没有成员管理后台或 Project CRUD API。
 
 ## 16. 工程目录
 

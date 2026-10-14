@@ -19,6 +19,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 
 import asyncpg
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
 from agenthub.artifacts.local import LocalFileArtifactStore
@@ -51,8 +52,27 @@ async def sentinel(settings: Settings, artifact_id: str | None = None) -> str:
     try:
         service = ArtifactService(database, store, settings.artifact_max_bytes)
         if artifact_id is None:
-            metadata = await service.save(scope, b"persist across application restart")
-            return metadata.artifact_id
+            # 旧 Schema 哨兵使用显式 SQL，避免当前 ORM 对新增列/表的依赖。
+            artifact_id = str(uuid4())
+            key = f"obj_{uuid4().hex}{uuid4().hex}"
+            content = b"persist across application restart"
+            stored = await store.save(key, content)
+            async with database.session() as db, db.begin():
+                await db.execute(
+                    text(
+                        "INSERT INTO artifacts (artifact_id, storage_key, tenant_id, "
+                        "project_id, content_hash, size_bytes, media_type, status, "
+                        "created_at, updated_at) VALUES (:id, :key, 'verification', "
+                        "'restart', :hash, :size, 'text/plain', 'ready', now(), now())"
+                    ),
+                    {
+                        "id": artifact_id,
+                        "key": key,
+                        "hash": stored.content_hash,
+                        "size": stored.size_bytes,
+                    },
+                )
+            return artifact_id
         assert (
             await service.read(scope, artifact_id)
             == b"persist across application restart"
@@ -175,7 +195,7 @@ def main() -> None:
             {
                 "database": name,
                 "restart_artifact_id": artifact_id,
-                "migration": "0003_users_sessions",
+                "migration": "0004_tenant_authorization",
                 "api_restart": "passed",
                 "note": "Isolated deterministic integration evidence; "
                 "no model or connector",
