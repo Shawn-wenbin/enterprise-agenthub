@@ -1,0 +1,47 @@
+{
+  "checksum_algorithm": "SHA-256",
+  "environment": {
+    "dependencies": {
+      "fastapi": "0.143.0",
+      "httpx2": "2.13.1",
+      "pydantic": "2.14.0",
+      "pytest": "9.1.1",
+      "pytest-asyncio": "1.4.0",
+      "starlette": "1.7.0"
+    },
+    "dependency_source": "root_uv_lock",
+    "python": "3.12",
+    "repository_checksums": {
+      ".python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "pyproject.toml": "6db40cd009c31f73b6fe66eae401369e55c534bf1a5e279dcf8ae74a1a20b0b0",
+      "uv.lock": "0e25514713e305b46791751749ac6d57aca616241c2d2c1a8f7a2033740dd78d"
+    }
+  },
+  "files": {
+    "README.md": "5e082d9a98c481d6b0067bce2231a914cb313721d569e99e75773b5d1ff8fbf6",
+    "changes/changelog.md": "2477d48d38480221455d0c675bef5d0a3a880ceda1a17228f5d8a729122d0240",
+    "logs/server_events.jsonl": "02de37509c0d5466359b06ed78c341b0392e1515706fd873fde9a27d696e0327",
+    "requests/client_requests.jsonl": "a4b3af1fa77c285573de448b22dbeac3094e4fde8557f10e32a1b797f2aba2ff",
+    "requests/schema_probes.jsonl": "860b12b3ef75d614e7300a9b04cbec91c9a7dff845164ca4cc5782310897356b",
+    "requests/uncertain_requests.jsonl": "74c1a807f50b0ea8b126bf0733001e68e006434b3cc3f1afccc711b71cadbbc3",
+    "source/orderlab.py": "8f9f1476eeddd5f0c98a66e15b9af8acda378ddbd6601ae0dfc8e55265cd8bef",
+    "source/scenario.py": "1dc043e103a396d2c1b7e4436f0ef7fc2c2acc0b6b02fc0afe55989b359e85a5",
+    "specs/openapi.json": "6117a172747223e47abd9240d19fc1ed6be56b5714a2d4445e0d0b12d4755386",
+    "specs/order_api.md": "2d2780ad19f637f29e69d8a4b31be6c18f08163b37027e33d32d91741cd42ae8",
+    "tests/conftest.py": "64601406d3233072d80a315881a0da3278ce72021c202a08204fd1464e2834f0",
+    "tests/test_controls.py": "71525d0ec0c9badf6b9cd183fe3ba22dedb65885618ea56cf59aaae9642182ff",
+    "tests/test_public_reproduction.py": "7d28cd565ca83058e2ce29cf5d414be99be6939b503b4e589f27ea4680dd6416",
+    "tickets/history.json": "bf416be321c1d3d406277e9bd909d19732aeb809119263087626d233f63d1d9e"
+  },
+  "fixture_id": "orderlab",
+  "fixture_version": "orderlab_v1",
+  "public_tests": [
+    "tests/test_public_reproduction.py::test_timeout_retry_creates_one_order"
+  ],
+  "reproduction_guide": "README.md",
+  "source_checksum": "c9995b01e4399bb005bd2ea579ecda0862bbabfb19b86e1bb49a49e43a5488d5",
+  "source_checksum_rule": "sha256(sorted(path + NUL + file_sha256 + LF))",
+  "source_root": "source",
+  "symptom": "移动端 2.3 创建订单超时重试后，同一业务操作观察到两笔订单。",
+  "synthetic": true
+}

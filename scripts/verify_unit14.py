@@ -194,10 +194,11 @@ def main() -> None:
         expected: int = 0,
         overrides: dict[str, str] | None = None,
         capture: bool = False,
+        cwd: Path = REPO,
     ) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(
             args,
-            cwd=REPO,
+            cwd=cwd,
             env={**environments[index], **(overrides or {})},
             text=True,
             capture_output=capture,
@@ -244,16 +245,21 @@ def main() -> None:
 
     passwords = {name: secrets.token_urlsafe(24) for name in DEMO_LOGINS}
     seed_config = {"DEMO_SEED_PASSWORDS": json.dumps(passwords)}
-    seed_command = ["uv", "run", "python", "-m", "agenthub.cli", "seed-demo"]
+    # 环境字典与 .env 的嵌套配置会合并；隔离 cwd，避免本地 Seed 密码填补“缺失配置”。
+    seed_command = [sys.executable, "-m", "agenthub.cli", "seed-demo"]
     before_seed = asyncio.run(snapshot(isolated[0]))
     assert (
         "created"
-        in command(0, seed_command, overrides=seed_config, capture=True).stdout
+        in command(
+            0, seed_command, overrides=seed_config, capture=True, cwd=directory
+        ).stdout
     )
     after_seed = asyncio.run(snapshot(isolated[0]))
     assert (
         "unchanged"
-        in command(0, seed_command, overrides=seed_config, capture=True).stdout
+        in command(
+            0, seed_command, overrides=seed_config, capture=True, cwd=directory
+        ).stdout
     )
     assert after_seed == asyncio.run(snapshot(isolated[0]))
     assert (
@@ -275,7 +281,14 @@ def main() -> None:
         ),
         ({**seed_config, "ENV": "staging"}, "configuration_error"),
     ]:
-        result = command(0, seed_command, expected=1, overrides=overrides, capture=True)
+        result = command(
+            0,
+            seed_command,
+            expected=1,
+            overrides=overrides,
+            capture=True,
+            cwd=directory,
+        )
         assert error in result.stderr
         assert all(
             password not in result.stderr + result.stdout
@@ -345,6 +358,7 @@ def main() -> None:
                             expected=1,
                             overrides=seed_config,
                             capture=True,
+                            cwd=directory,
                         )
                         assert "seed_conflict" in result.stderr
     assert baseline_audit == asyncio.run(audit(settings))

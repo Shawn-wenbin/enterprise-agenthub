@@ -1,10 +1,23 @@
 # Enterprise AgentHub
 
-面向研发故障分析与行动的企业 Agent 工作台。当前已实现 **Phase 1 / Unit 1.1–1.3**：
+面向研发故障分析与行动的企业 Agent 工作台。当前已实现 **Phase 1 / Unit 1.1–1.5**：
 工程、PostgreSQL/Redis、异步数据库与迁移、受控本地产物、统一错误和 request_id，
-以及 User/Session 登录、撤销、CSRF/Origin 与共享登录限流。
+以及 User/Session 登录、多租户项目授权、固定 OrderLab 合成故障素材和初始公开 Case 合同。
 规格见 [PROJECT_SPEC](docs/PROJECT_SPEC.md)，实际验收见 [IMPLEMENTATION_STATUS](docs/IMPLEMENTATION_STATUS.md)，
-设计依据见 [ADR 0001](docs/adr/0001-unit12-storage-and-database.md)。本次止于 Unit 1.3，未实现租户/角色授权。
+设计依据见 [ADR](docs/adr/)。本次止于 Unit 1.5，尚无 Run、Worker、Agent 或模型质量评测。
+
+Unit 1.4 的实际授权、Seed 与迁移约定见 [状态记录](docs/IMPLEMENTATION_STATUS.md) 和 ADR 0002。
+
+OrderLab 的环境、固定素材和公开实验见 [实验指南](fixtures/orderlab/README.md)，
+Case 边界见 [数据集合同](datasets/README.md)。独立验证：
+
+```bash
+uv run python scripts/verify_unit15.py --static-only
+uv run python scripts/verify_unit15.py
+```
+
+前者只读检查，不执行素材；后者显式运行固定受信任本地样例，核验三次目标业务断言失败。
+故障实验返回失败是基线证据，与平台 `uv run pytest backend/tests` 的正常通过分开报告。
 
 ## 环境与依赖
 
@@ -93,7 +106,9 @@ GET `/api/v1/auth/csrf`。身份只有 id/login_name，密码及 Session Token �
 账号标识 strip/lower 后限 ASCII 1–128 字符（字母/数字开头，其余允许 `_.@+-`）；数据库唯一和
 CHECK 约束保证一致。密码输入 1–256 字符，登录 JSON 总大小最多 4096 bytes（含 chunked）。
 
-没有公共注册或正式 demo seed。`backend/tests/test_auth_integration.py` 的 user fixture 在指定
+没有公共注册。显式 dev/test demo seed：`uv run python -m agenthub.cli seed-demo`，
+密码由本地 DEMO_SEED_PASSWORDS 提供，配置及冲突语义见状态记录，不在应用启动时自动执行。
+`backend/tests/test_auth_integration.py` 的 user fixture 在指定
 隔离库里创建唯一账号和随机密码，通过 PasswordSecurity.hash 存 Argon2id；验证脚本同样只在新库
 创建测试用户，不输出密码。运行下方完整脚本即可自动验证登录，无需默认账号或生产密码。
 
@@ -168,7 +183,8 @@ os.link 原子发布并拒绝目标占用，文件与目录 fsync。根目录须
 文件 IO 和 hash 校验在工作线程运行；取消不能终止 OS 线程，会等待本次 IO 完成再允许资源关闭。
 
 当前归属上下文不是认证：只能由可信服务端代码构造，不能从匿名 HTTP 或模型参数创建。
-没有上传/下载 HTTP API，也不返回主机文件路径。Unit 1.4 补 Principal、ACL 与租户/项目外键。
+没有上传/下载 HTTP API，也不返回主机文件路径。Unit 1.4 已提供 Principal/项目 ACL，
+产物新增 nullable 的已确认项目关联；旧归属没有自动回填。项目准入不等于产物内容授权，见 ADR 0002。
 
 只读诊断（先正常启动过应用，使存储目录存在）：
 
@@ -191,27 +207,28 @@ uv run pytest backend/tests
 uv run alembic -c backend/alembic.ini check
 ```
 
-默认 pytest 当前运行 67 个测试，明确 deselect 36 个依赖真实服务的测试，不将未运行项算作通过。
-完整 Unit 1.3 验证入口：
+默认 pytest 当前运行 133 个测试，明确 deselect 56 个依赖真实服务的测试，不将未运行项算作通过。
+真实数据库/认证/项目授权回归入口：
 
 ```bash
-uv run python scripts/verify_unit13.py
+uv run python scripts/verify_unit14.py
 ```
 
 脚本要求 ENV=development/test 和本地 CREATE DATABASE 权限，自动使用 UTF-8 locale：
-创建新的 agenthub_unit13_test_<uuid>，先升级到 Unit 1.2 并保存真实 Artifact，再升级 head、
-重复升级、Alembic check，运行全部 103 个测试。Redis 使用本地服务的逻辑库 15 和随机 test namespace，
-不 flush 或改动业务键。启动本次 Uvicorn/Vite 空闲端口进程，验证代理 Cookie/login/me、重启后身份、
-logout 失效、非法 CSRF 和伪造 Forwarded/XFF 无法绕过来源限流；只停止脚本自己的进程组。
-测试库及 .data/unit13-verification/<database>/ 的无敏感 result.json/日志保留，清理需另行授权。
-也可配置 TEST_DATABASE_URL（只允许 agenthub_unit12_test_<uuid> 或 agenthub_unit13_test_<uuid>）
+创建两个新的 agenthub_unit14_test_<uuid>，验证新库及带历史 Artifact/User/Session 的旧库升级、
+重复升级、Alembic check，运行全部 189 个测试。Redis 使用本地逻辑库 15 和随机 test namespace，
+不 flush 或改动业务键。验证四个独立 Demo 登录、Cookie 项目读取、伪造租户、撤权和 Seed 拒绝，
+仅停止脚本自己的 Uvicorn 进程。Seed CLI 在隔离 cwd 运行，避免本地 .env 填补缺失密码测试。
+测试库及 .data/unit14-verification/<uuid>/ 的无敏感 result.json/日志保留，清理需另行授权。
+也可配置 TEST_DATABASE_URL（只允许 agenthub_unit12_test_<uuid>、agenthub_unit13_test_<uuid>
+或 agenthub_unit14_test_<uuid>）
 与 TEST_REDIS_URL 后运行 `uv run pytest backend/tests --integration`；先确保隔离库已 upgrade head。
-旧 verify_unit12.py 仍可验证产物/health 回归，但不会验证 Vite 认证链路。
+verify_unit13.py 另保留 Vite 同源代理与重启后 Session 验证；verify_unit12.py 保留产物/health 回归。
 
-迁移链为 0001_artifacts → 0002_constraint_names → 0003_users_sessions；只有 artifacts/users/sessions
-和 alembic_version 四张表。已有两条迁移未修改，不启动 create_all，不自动 downgrade 或删除数据。
+迁移链为 0001_artifacts → 0002_constraint_names → 0003_users_sessions → 0004_tenant_authorization。
+Unit 1.5 没有新增或改写迁移；不启动 create_all，不自动 downgrade 或删除数据。
 若当前终端为 ASCII locale，迁移命令前设置 `LC_ALL=en_US.UTF-8`，避免 Alembic 读取中文 ini 注释失败。
 本地测试覆盖真实 PostgreSQL/Redis/HTTP，HTTPS Cookie 属性由 ASGI HTTPS 客户端验证；尚未验证真实
 浏览器 Cookie 行为、生产 TLS/反向代理、多宿主部署和负载性能。没有 Mock/Live 模型，不证明生产落地。
-Tenant/Project/Membership/Role/Resource ACL/Principal 和 dev/test 幂等 seed 留待 Unit 1.4；
-SSO/OIDC、完整登录 UI、会话管理和完整 IAM 不在本 Unit 范围。
+Tenant/Project/Membership/Role/Project ACL/Principal 和 dev/test 幂等 seed 已在 Unit 1.4 实现；
+Run 与具体内容资源授权、SSO/OIDC、完整登录 UI、会话管理和完整 IAM 仍未实现。

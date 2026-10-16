@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "fixture_version": "orderlab_v1",
+  "tickets": [
+    {
+      "synthetic": true,
+      "ticket_id": "SYN-101",
+      "title": "测试网关延迟导致客户端提示超时",
+      "status": "closed",
+      "created_at": "2026-08-12T09:00:00Z",
+      "affected_version": "mobile-2.1 / server-0.2",
+      "symptom": "客户端超时提示，但人工查询仍能看到订单。",
+      "investigation_summary": "该历史事件关联到测试网关延迟；所抽查业务操作各有一笔订单。未复现重复创建。",
+      "resolution_summary": "调整测试网关预算，并在超时提示中说明结果待确认。"
+    },
+    {
+      "synthetic": true,
+      "ticket_id": "SYN-108",
+      "title": "旧客户端 quantity 使用字符串被拒绝",
+      "status": "closed",
+      "created_at": "2026-09-02T10:00:00Z",
+      "affected_version": "mobile-2.0 / server-0.3-contract-preview",
+      "symptom": "创建订单返回 422，没有生成订单。",
+      "investigation_summary": "历史请求 quantity 为字符串；合同要求严格整数。未涉及超时与重试。",
+      "resolution_summary": "客户端按合同发送整数；未扩大服务端 Schema。"
+    }
+  ]
+}

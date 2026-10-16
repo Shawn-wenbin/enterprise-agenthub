@@ -1,0 +1,10 @@
+{
+  "case_id": "order_uncertain_001",
+  "dataset_version": "v1",
+  "task_family": "insufficient_evidence",
+  "problem_group": "orderlab_unobserved_v1",
+  "fixture_version": "orderlab_v1",
+  "synthetic": true,
+  "query": "checkout_unobserved 有一条客户端超时片段，没有可用的服务端观测。请说明当前可确认的事实、仍可能的处理结果及最少需要补充的证据。不要把历史事件原因或其他业务操作的结果当作本次已确认原因。",
+  "allowed_sources": ["requests/uncertain_requests.jsonl", "specs/order_api.md", "tickets/history.json"]
+}

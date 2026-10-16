@@ -1,0 +1,19 @@
+{
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_unobserved",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"capture_scope": "client_only",
+	"event": "response_timeout",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_unobserved",
+	"path": "/orders",
+	"request_id": "uncertain_req_1",
+	"server_observation": "not_available",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:00Z"
+}

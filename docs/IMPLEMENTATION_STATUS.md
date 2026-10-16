@@ -1,5 +1,130 @@
 # IMPLEMENTATION_STATUS
 
+最后更新：2026-10-16
+当前 Phase：1
+当前 Unit：1.5 — OrderLab 素材与初始评测格式
+Unit 状态：**verified**（固定故障、素材、输入合同及边界验证通过；不是 Agent/Grader 质量验收）
+当前模式：synthetic 业务世界 + 真实本地 FastAPI/HTTPX 执行；平台回归使用真实 PostgreSQL/Redis/HTTP。
+
+## Unit 1.5 范围与基线
+
+开工 main 分支、工作区干净，基线 b68a8a7；核对 AGENTS、PROJECT_SPEC 第 3/4/16–20 节、
+IMPLEMENTATION_PLAN 的 Unit 1.5、Unit 1.1–1.4 状态及 accepted ADR 0001/0002。
+原仓库没有 fixtures/datasets、数据版本或 Manifest 公共工具；ArtifactStore 的字节 hash 为 SHA-256，
+但它管理数据库业务产物，不适合作固定仓库素材清单。现有授权是服务端 Principal + Project ACL，
+本次未把 Case 的 allowed_sources 变成授权，也没有硬编码 Demo Principal 或自动执行 Seed。
+README 仍写 Unit 1.3，已按当前实现修正。无新增依赖，pyproject.toml、uv.lock、前端和迁移未改。
+
+## OrderLab 最小闭环 — verified
+
+- `fixtures/orderlab/source/orderlab.py`：synthetic 服务端 0.3.0 / orderlab_v1；独立 create_app，
+  POST /orders、GET /orders?operation_id，严格请求 Schema、订单内存状态和结构化事件。
+  与平台 User/Session/Tenant/Project、数据库及正常 Router 解耦；不是第二套产品后端。
+- `source/scenario.py`：固定 checkout_001 / 商品 / 参数，从空状态执行真实 ASGI 请求；第一次写入后
+  在 Transport 边界丢弃响应，触发客户端 ReadTimeout；第二次保留业务标识和参数，使用新请求 ID。
+  无随机数、sleep、第三方或数据库竞态伪装；应用实例内状态不保证跨重启持久化。
+- 正确预期：同一业务操作仅有一笔订单；实际 GET 返回 ord_0001、ord_0002 两笔独立订单。
+  `tests/test_public_reproduction.py::test_timeout_retry_creates_one_order` 实际因
+  `assert len(orders) == 1` / `ORDERLAB_SINGLE_OPERATION` / `assert 2 == 1` 失败，pytest 退出 1。
+  三个独立进程观测完全一致，全部分类为 expected_reproduction_failure。
+- `tests/test_controls.py`：2 个正向测试实际通过，覆盖合法创建、不同操作不合并、非法输入 422 且无写入。
+  根 pytest testpaths 仍只包含 backend/tests，不用 skip/xfail 掩盖故障。
+
+## 固定素材、版本与清单 — verified
+
+Fixture Manifest 为 `fixtures/orderlab/manifest.json`，fixture_version=orderlab_v1，synthetic=true。
+14 个固定文件覆盖 2 个源码/配方、3 个公开测试/配置、设计规范、实际生成的 OpenAPI、变更记录、
+2 条历史工单、4 条主客户端事件、4 条服务端事件、2 条实际 Schema 探针、1 条仅客户端不完整观测和指南。
+探针比较 201 / 422；不完整观测没有伪造关联服务端日志。所有时间固定为 UTC，版本发布/提交标签均为合成。
+
+逐文件按原始字节计算 SHA-256；源码聚合只覆盖 source/，按相对路径稳定排序，拼接
+`path + NUL + lowercase_hex_file_sha256 + LF` 后按 UTF-8 求 SHA-256。
+源码 checksum：c9995b01e4399bb005bd2ea579ecda0862bbabfb19b86e1bb49a49e43a5488d5。
+规范、OpenAPI、日志、公开测试等独立逐文件校验，Manifest 不参与自身哈希。
+根 pyproject.toml / uv.lock / .python-version 独立校验；Python 3.12.13，
+FastAPI 0.143.0、Pydantic 2.14.0、Starlette 1.7.0、httpx2 2.13.1、pytest 9.1.1、pytest-asyncio 1.4.0，
+同时核对安装环境与根 lock。无绝对开发机路径写入素材清单。
+
+`evaluation/validation.py` 默认只读，清单必须完整，不声明的新文件拒绝；只有已知缓存目录被忽略。
+路径限制为受控相对 POSIX 路径，逐段拒绝上级跳转、URL、符号链接及父目录链接。
+`scripts/orderlab_assets.py` 显式检查实际 OpenAPI/配方输出逐字节一致，执行前先验 Manifest；
+--initialize 仅首次冻结，已有清单时拒绝，不提供自动旧版本 Hash 刷新。
+实质变更需发布新 fixture_version / dataset_version，评审差异并登记新版本支持。
+取舍及未来扩展见 accepted ADR 0003，PROJECT_SPEC 18.2 已同步当前合同。
+
+## 初始 Eval 合同与边界 — verified
+
+`evaluation/schemas.py` 采用严格 Pydantic、extra=forbid；`datasets/public/` 共 4 个 v1 输入：
+
+- order_retry_001：retry_idempotency，具备完整公开故障复现。
+- order_schema_001：schema_compatibility，有实际接口探针；仅初始任务合同，没有独立完整故障版本。
+- order_timeout_001：timeout_outcome，复用主事件时间线；与 retry 同组 orderlab_checkout_v1，
+  不能把两种提问当作独立故障家族或拆到 dev/holdout 制造独立样本。
+- order_uncertain_001：insufficient_evidence，仅获客户端片段、规范与历史工单；没有本次服务端状态。
+
+`datasets/manifests/orderlab_v1.json` 关联 Case ID、dataset_version、task_family、problem_group、
+input_ref、input_sha256、fixture_version。它是评测侧元数据，禁止原样作为 Agent 输入/Tool Result。
+grader_status=not_implemented、未填写 grader_ref、policy_assertions=[]；没有虚构答案、质量分数或成功率。
+同一个固定业务世界可供不同调查角度复用，不要求每个 Case 都有独立故障代码。
+
+公开输入不含参考原因、expected evidence、reference patch、隐藏测试和评分规则；未创建这些私有内容。
+Schema、敏感标记、固定清单和输入 checksum 检查未知字段、越界引用与未发布变更；
+它们不能完整判断自然语言答案泄漏，新增素材仍需人工审阅。
+allowed_sources 仅是受控集合，未来读取还须由可信 Session/Principal 和资源 ACL 授权。
+扫描只读字节，即使临时副本的已声明 Python 包含写文件代码且 hash 合法，也不会执行。
+目录和路径检查不代表独立 grader 的身份/挂载/环境隔离，不承诺抵御同 UID 并发替换文件。
+
+## 实际验证 — verified
+
+- `uv run ruff check .`：All checks passed。
+- `uv run ruff format --check .`：85 files already formatted。
+- `uv run mypy backend/src`：strict 成功，46 源码文件。
+- `uv run pytest backend/tests`：133 passed，56 deselected；没有收集公开故障测试。
+- `uv run pytest backend/tests/test_orderlab.py -q`：早期 54 passed；最终统一验证的同文件为 56 passed，
+  新增已声明 Python 不执行及 Fixture Manifest 敏感标记反例。
+  覆盖临时副本源码/日志/规范/OpenAPI 篡改、依赖漂移、非法路径/链接、清单遗漏、公开测试引用、
+  时间线错误、Case 重复/版本/Hash/答案字段/权限字段/引用、环境异常与非目标断言分类拒绝。
+- `uv run python scripts/verify_unit15.py --static-only`：退出 0，Manifest/素材/四个 Case/边界一致，未执行源码。
+- `uv run python scripts/orderlab_assets.py`：退出 0，实际生成的 OpenAPI 及 4 份 JSONL 与固定字节一致。
+- `uv run pytest fixtures/orderlab/tests/test_controls.py -q`：退出 0，2 passed。
+- `uv run python scripts/verify_unit15.py`：退出 0；56 个边界测试、2 个正向对照通过；
+  三次实际 `python -m pytest fixtures/orderlab/tests/test_public_reproduction.py::test_timeout_retry_creates_one_order`
+  均退出 1，均只有目标业务断言失败；保存真实命令、stdout/stderr、JUnit 和 GET 订单观测。
+  **该结果表示故障基线确认，不表示公开业务要求已正常通过或故障已修复。**
+- `uv run python scripts/verify_unit14.py`：最终 **189 passed**，其中 133 本地、56 真实集成；
+  真实 PostgreSQL/Redis/HTTP、迁移/Seed/撤权回归通过。
+  新旧隔离库从既有迁移链升级、重复升级与 Alembic check；历史三种产物/User/Session 保留。
+  开发库只读前后审计一致，未改原有用户、项目或产物；Redis DB15 使用随机 test namespace，无 flush。
+- `pnpm -C frontend typecheck`、`pnpm -C frontend build`：退出 0，Vite 8.3.4；未改前端代码。
+- `git diff --check`：通过；.data、.env、缓存和构建产物仍被忽略。没有 commit/push/部署/外部写入。
+
+Unit 1.5 最终证据：`.data/unit15-verification/72b4f6ae218b4fe48f2f601d6bce4e9f/result.json`，
+同目录 boundary-tests/controls/reproduction-1/2/3 的 stdout、stderr、XML，全部 Git ignored。
+Unit 1.1–1.4 最终回归证据：`.data/unit14-verification/7b85249385924bc1983eb1b7c9e747bd/result.json`、api.log；
+fresh DB 为 agenthub_unit14_test_db059e01e2c44351aef7b8958a13ca35，
+legacy DB 为 agenthub_unit14_test_94227bcfdd664a928adbcc1e3115270b，均保留不清理。
+首轮分类器误以为 pytest JUnit 提供 type 属性，实际异常类型在 message；按真实 XML 修正，
+保留 `.data/unit15-verification/9e455436404c465583d2c73609ca6f47/` 的失败记录，不计为复现成功。
+历史验证入口首轮全部 187 个测试通过，但后续缺配置 CLI 检查受本地 .env 嵌套字典合并影响；
+仅修正 verify_unit14 的 Seed 子进程 cwd，使用锁定环境 Python，不修改产品配置或降低断言。
+修正后的完整验证已通过，原隔离库保留，无清库。
+
+## 未实现、unverified 与下一 Unit
+
+- **implemented / verified**：单一 orderlab_v1 主故障、固定多源合成素材、两个 Manifest 与四个 PublicCase 合同。
+- **unverified / planned**：20 个手审 Case、其他独立故障版本、跨版本规范、同名受限素材、恶意指令材料、
+  Retrieval Grader、Judge、Live Model/Agent 质量、Phase 7 独立隐藏 grader/Runner 和真实隔离。
+  当前不执行任何模型调查、工单创建或补丁验证。
+- **blocked**：无 Unit 1.5 必要退出条件阻塞；Phase 1 整体仍 unverified。
+- Unit 1.6 状态为 **planned**，未开始。进入时可复用 PublicCase、固定 query、input hash 和 fixture_version，
+  由服务端认证构造 Principal 并确定真实 Tenant/Project 资源范围，不能信任 Case 中的身份字段或 allowed_sources。
+  Mock Run 应显著标记 Mock，仅读公开任务与授权素材，不读取 Dataset Manifest 私有元数据或未来隐藏答案，
+  不把 MockModel 文本当作已完成真实调查。Run API/Celery/状态机的实现须下一次授权。
+
+---
+
+## Unit 1.4 验收历史（2026-10-14，原记录保留）
+
 最后更新：2026-10-14
 当前 Phase：1
 当前 Unit：1.4 — 租户、项目、角色与资源授权

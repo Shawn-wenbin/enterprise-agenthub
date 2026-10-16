@@ -1,0 +1,10 @@
+{
+  "case_id": "order_timeout_001",
+  "dataset_version": "v1",
+  "task_family": "timeout_outcome",
+  "problem_group": "orderlab_checkout_v1",
+  "fixture_version": "orderlab_v1",
+  "synthetic": true,
+  "query": "checkout_001 的第一次请求在客户端显示超时。请按 request_id 和 operation_id 关联时间线，判断现有证据对服务端处理结果能说明什么，并说明再次提交前需要确认哪些状态。不要把客户端超时等同于服务端失败。",
+  "allowed_sources": ["specs/order_api.md", "requests/client_requests.jsonl", "logs/server_events.jsonl", "tickets/history.json"]
+}

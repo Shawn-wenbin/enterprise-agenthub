@@ -1,0 +1,10 @@
+{
+  "case_id": "order_schema_001",
+  "dataset_version": "v1",
+  "task_family": "schema_compatibility",
+  "problem_group": "orderlab_contract_v1",
+  "fixture_version": "orderlab_v1",
+  "synthetic": true,
+  "query": "移动端候选请求添加 delivery_note 后反馈订单创建失败。请检查 0.3.0 接口是否承诺支持该字段，比较两条请求探针，说明可确认的兼容性事实及下一步。不要仅凭移动端版本推断服务端字段支持。",
+  "allowed_sources": ["source/orderlab.py", "specs/order_api.md", "specs/openapi.json", "requests/schema_probes.jsonl", "changes/changelog.md", "tickets/history.json"]
+}

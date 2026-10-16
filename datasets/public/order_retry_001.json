@@ -1,0 +1,10 @@
+{
+  "case_id": "order_retry_001",
+  "dataset_version": "v1",
+  "task_family": "retry_idempotency",
+  "problem_group": "orderlab_checkout_v1",
+  "fixture_version": "orderlab_v1",
+  "synthetic": true,
+  "query": "移动端 2.3 发布后，创建订单超时重试时偶尔生成两笔订单。请结合服务日志、接口规范、源码、最近变更和历史工单分析，输出可定位证据与修复建议，区分事实和假设。创建工单前需要人工审核；本任务不实际创建工单。调查窗口为 2026-10-01T08:00:00Z 至 08:00:07Z，服务为 order-api 0.3.0。",
+  "allowed_sources": ["source/orderlab.py", "source/scenario.py", "specs/order_api.md", "specs/openapi.json", "requests/client_requests.jsonl", "logs/server_events.jsonl", "changes/changelog.md", "tickets/history.json", "tests/test_public_reproduction.py", "tests/conftest.py"]
+}

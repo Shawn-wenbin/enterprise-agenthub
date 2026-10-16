@@ -1,0 +1,68 @@
+{
+	"api_version": "0.3.0",
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_001",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "request_received",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"path": "/orders",
+	"request_id": "mobile23_req_1",
+	"service": "order-api",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:01Z"
+}
+{
+	"api_version": "0.3.0",
+	"event": "order_persisted",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"order_id": "ord_0001",
+	"path": "/orders",
+	"request_id": "mobile23_req_1",
+	"service": "order-api",
+	"status_code": 201,
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:02Z"
+}
+{
+	"api_version": "0.3.0",
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_001",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "request_received",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"path": "/orders",
+	"request_id": "mobile23_req_2",
+	"service": "order-api",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:05Z"
+}
+{
+	"api_version": "0.3.0",
+	"event": "order_persisted",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"order_id": "ord_0002",
+	"path": "/orders",
+	"request_id": "mobile23_req_2",
+	"service": "order-api",
+	"status_code": 201,
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:06Z"
+}

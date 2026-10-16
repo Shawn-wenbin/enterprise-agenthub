@@ -1,0 +1,51 @@
+{
+  "cases": [
+    {
+      "case_id": "order_retry_001",
+      "dataset_version": "v1",
+      "fixture_version": "orderlab_v1",
+      "grader_status": "not_implemented",
+      "input_ref": "public/order_retry_001.json",
+      "input_sha256": "d8a8f0f6edcb66cbc9d1cb493a2fbe47391c408325dc81756c3bd9441f1abdde",
+      "policy_assertions": [],
+      "problem_group": "orderlab_checkout_v1",
+      "task_family": "retry_idempotency"
+    },
+    {
+      "case_id": "order_schema_001",
+      "dataset_version": "v1",
+      "fixture_version": "orderlab_v1",
+      "grader_status": "not_implemented",
+      "input_ref": "public/order_schema_001.json",
+      "input_sha256": "dca7035158b2153b41bccaab707757bb1a8b4cd4a974e415f8d2260193cd9a9e",
+      "policy_assertions": [],
+      "problem_group": "orderlab_contract_v1",
+      "task_family": "schema_compatibility"
+    },
+    {
+      "case_id": "order_timeout_001",
+      "dataset_version": "v1",
+      "fixture_version": "orderlab_v1",
+      "grader_status": "not_implemented",
+      "input_ref": "public/order_timeout_001.json",
+      "input_sha256": "7d3d08ed47769ffd6740852f7e92358c0f233c5ee538ed1b74852e3f0bfbfaae",
+      "policy_assertions": [],
+      "problem_group": "orderlab_checkout_v1",
+      "task_family": "timeout_outcome"
+    },
+    {
+      "case_id": "order_uncertain_001",
+      "dataset_version": "v1",
+      "fixture_version": "orderlab_v1",
+      "grader_status": "not_implemented",
+      "input_ref": "public/order_uncertain_001.json",
+      "input_sha256": "b16237ab850037a6a534b9098ab27a1acba50422f4c3b2995c390d194560ccc0",
+      "policy_assertions": [],
+      "problem_group": "orderlab_unobserved_v1",
+      "task_family": "insufficient_evidence"
+    }
+  ],
+  "dataset_version": "v1",
+  "synthetic": true,
+  "visibility": "evaluation_metadata_only"
+}

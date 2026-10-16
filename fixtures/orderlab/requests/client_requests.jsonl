@@ -1,0 +1,62 @@
+{
+	"attempt": 1,
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_001",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "request_sent",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"path": "/orders",
+	"request_id": "mobile23_req_1",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:00Z"
+}
+{
+	"attempt": 1,
+	"event": "response_timeout",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"path": "/orders",
+	"request_id": "mobile23_req_1",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:03Z"
+}
+{
+	"attempt": 2,
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_001",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "request_sent",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"path": "/orders",
+	"request_id": "mobile23_req_2",
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:04Z"
+}
+{
+	"attempt": 2,
+	"event": "response_received",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_001",
+	"order_id": "ord_0002",
+	"path": "/orders",
+	"request_id": "mobile23_req_2",
+	"status_code": 201,
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:07Z"
+}

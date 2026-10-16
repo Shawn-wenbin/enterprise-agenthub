@@ -933,6 +933,15 @@ Grader-only：expected evidence、参考原因、政策断言、隐藏测试、�
 
 此 manifest 属于评测端；不能完整传给模型或放到其可读工具结果中。
 
+Unit 1.5 当前合同：`evaluation/schemas.py` 定义严格 PublicCase 和 DatasetManifest。
+`datasets/public/` 的四个 synthetic 输入引用 `orderlab_v1`；`allowed_sources` 是 fixture 内相对路径集合，
+不承担 Tenant/Project/Resource ACL。Dataset Entry 增加 `problem_group` 与 `input_sha256`，
+相同实际事件的 retry/timeout 保持同组，避免改写任务跨 dev/holdout。
+当前 `grader_status=not_implemented`，不填写不存在的 `grader_ref`，`policy_assertions` 为空；
+不计算 Agent 质量得分。Fixture Manifest 单独固定源码、依赖、公开测试及所有合成素材的 SHA-256。
+只读扫描和显式执行工具分开；公开故障测试独立于平台 pytest，目标业务断言失败由验证入口核验。
+版本与隔离取舍见 ADR 0003；多故障版本、20 个审阅 Case、独立 grader 和运行隔离仍按后续阶段实现。
+
 ### 18.3 指标与 grader
 
 | 层     | 指标                                    | 方式                |

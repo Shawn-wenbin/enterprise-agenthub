@@ -1,0 +1,58 @@
+{
+	"body": {
+		"currency": "CNY",
+		"operation_id": "checkout_schema",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "schema_probe",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.2",
+	"operation_id": "checkout_schema",
+	"path": "/orders",
+	"request_id": "schema_22",
+	"response": {
+		"created_at": "2026-10-01T08:00:01Z",
+		"currency": "CNY",
+		"operation_id": "checkout_schema",
+		"order_id": "ord_0001",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"status_code": 201,
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:02Z"
+}
+{
+	"body": {
+		"currency": "CNY",
+		"delivery_note": "synthetic demo",
+		"operation_id": "checkout_schema",
+		"quantity": 1,
+		"sku": "sku_demo_book"
+	},
+	"event": "schema_probe",
+	"fixture_version": "orderlab_v1",
+	"method": "POST",
+	"mobile_version": "2.3",
+	"operation_id": "checkout_schema",
+	"path": "/orders",
+	"request_id": "schema_23",
+	"response": {
+		"detail": [
+			{
+				"input": "synthetic demo",
+				"loc": [
+					"body",
+					"delivery_note"
+				],
+				"msg": "Extra inputs are not permitted",
+				"type": "extra_forbidden"
+			}
+		]
+	},
+	"status_code": 422,
+	"synthetic": true,
+	"timestamp": "2026-10-01T08:00:03Z"
+}
